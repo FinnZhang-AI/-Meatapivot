@@ -63,7 +63,7 @@
 ### One-line Start (Docker Compose)
 
 ```bash
-git clone https://github.com/your-org/meatapivot.git
+git clone https://github.com/FinnZhang-AI/-Meatapivot.git
 cd meatapivot
 bash scripts/dev-start.sh
 ```
