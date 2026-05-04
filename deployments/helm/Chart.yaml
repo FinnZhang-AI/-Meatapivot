@@ -1,0 +1,35 @@
+apiVersion: v2
+name: meatapivot
+description: A Helm chart for Meatapivot - Open Source Knowledge & Decision Intelligence Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - knowledge-graph
+  - decision-platform
+  - enterprise
+  - analytics
+maintainers:
+  - name: Platform Team
+    email: platform@example.com
+dependencies:
+  - name: postgresql
+    version: 12.5.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: neo4j
+    version: 5.0.0
+    repository: https://neo4j.github.io/neo4j-charts
+    condition: neo4j.enabled
+  - name: rabbitmq
+    version: 12.0.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: rabbitmq.enabled
+  - name: minio
+    version: 13.0.0
+    repository: https://charts.min.io/
+    condition: minio.enabled
+  - name: keycloak
+    version: 22.0.0
+    repository: https://codecentric.github.io/helm-charts
+    condition: keycloak.enabled

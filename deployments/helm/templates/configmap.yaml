@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kdp.fullname" . }}-config
+  labels:
+    {{- include "kdp.labels" . | nindent 4 }}
+data:
+  APP_NAME: "Meatapivot"
+  API_PREFIX: "/api/v1"
+  {{- range $key, $value := .Values.backend.env }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

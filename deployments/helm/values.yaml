@@ -1,0 +1,121 @@
+# Default values for meatapivot
+
+# Global settings
+global:
+  imageRegistry: ""
+  storageClass: ""
+
+# Backend configuration
+backend:
+  replicaCount: 2
+  image:
+    repository: meatapivot/backend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    DATABASE_URL: "postgresql+asyncpg://knowledge:kpassword@postgres:5432/knowledge_db"
+    NEO4J_URI: "bolt://neo4j:7687"
+    RABBITMQ_URL: "amqp://user:rabbitmq@rabbitmq:5672"
+    MINIO_ENDPOINT: "minio:9000"
+    KEYCLOAK_URL: "http://keycloak:8080"
+
+# Frontend configuration
+frontend:
+  replicaCount: 2
+  image:
+    repository: meatapivot/frontend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "inscode"
+    username: "knowledge"
+    password: "kpassword"
+    database: "knowledge_db"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# Neo4j configuration
+neo4j:
+  enabled: true
+  neo4j:
+    password: "neo4jpassword"
+    acceptLicenseAgreement: "yes"
+  volumes:
+    data:
+      mode: dynamic
+      size: 10Gi
+    logs:
+      mode: dynamic
+      size: 5Gi
+
+# RabbitMQ configuration
+rabbitmq:
+  enabled: true
+  auth:
+    username: "user"
+    password: "rabbitmq"
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# MinIO configuration
+minio:
+  enabled: true
+  rootUser: "minioadmin"
+  rootPassword: "minioadmin123"
+  persistence:
+    enabled: true
+    size: 20Gi
+  buckets:
+    - name: documents
+    - name: uploads
+
+# Keycloak configuration
+keycloak:
+  enabled: true
+  keycloak:
+    adminUser: "admin"
+    adminPassword: "admin123"
+  ingress:
+    enabled: false
+  postgresql:
+    enabled: false
+  externalDatabase:
+    host: "postgres"
+    port: 5432
+    database: "keycloak"
+    user: "knowledge"
+    password: "kpassword"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: knowledge.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
