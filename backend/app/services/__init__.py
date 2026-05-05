@@ -7,6 +7,16 @@ from app.services.storage import StorageService
 from app.services.database import get_db
 from app.services.redis_client import redis_client
 
+try:
+    from app.services.llm_gateway import llm_gateway
+except ImportError:
+    llm_gateway = None
+
+try:
+    from app.services.action_executor import ActionExecutor
+except ImportError:
+    ActionExecutor = None
+
 __all__ = [
     "postgres_client",
     "neo4j_client",
@@ -15,4 +25,6 @@ __all__ = [
     "StorageService",
     "get_db",
     "redis_client",
+    "llm_gateway",
+    "ActionExecutor",
 ]

@@ -1,0 +1,170 @@
+{
+  "scan_time": "2026-05-05T04:49:10.103075",
+  "project": "meatapivot",
+  "sast": [
+    {
+      "rule_id": "B307",
+      "rule_name": "eval_used",
+      "severity": "HIGH",
+      "file": "backend/app/services/action_executor.py",
+      "line": 33,
+      "column": 24,
+      "message": "Use of eval() detected. This is dangerous and should be avoided.",
+      "snippet": "Replaces dangerous eval() with a restricted AST evaluator."
+    },
+    {
+      "rule_id": "B307",
+      "rule_name": "eval_used",
+      "severity": "HIGH",
+      "file": "backend/app/services/action_executor.py",
+      "line": 69,
+      "column": 9,
+      "message": "Use of eval() detected. This is dangerous and should be avoided.",
+      "snippet": "def eval(self, expr: str) -> Any:"
+    },
+    {
+      "rule_id": "B307",
+      "rule_name": "eval_used",
+      "severity": "HIGH",
+      "file": "backend/app/services/action_executor.py",
+      "line": 256,
+      "column": 45,
+      "message": "Use of eval() detected. This is dangerous and should be avoided.",
+      "snippet": "passed = bool(evaluator.eval(policy))"
+    }
+  ],
+  "secrets": [
+    {
+      "type": "bearer_token",
+      "file": "docs/auth-routing-fix.md",
+      "line": 209,
+      "snippet": "Bearer eyJhbGciOiJIUzI1NiIs..."
+    },
+    {
+      "type": "bearer_token",
+      "file": "scripts/e2e-test-report.md",
+      "line": 210,
+      "snippet": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+  ],
+  "dependencies": [],
+  "config": [
+    {
+      "check": "weak_default_secret",
+      "file": "backend/app/core/config.py",
+      "severity": "HIGH",
+      "message": "Default JWT/SECRET_KEY detected. Must be overridden in production."
+    },
+    {
+      "check": "debug_default_true",
+      "file": "backend/app/core/config.py",
+      "severity": "MEDIUM",
+      "message": "DEBUG defaults to True. Should default to False for safety."
+    },
+    {
+      "check": "weak_password_in_env",
+      "file": ".env",
+      "line": 31,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in .env file."
+    },
+    {
+      "check": "weak_password_in_env",
+      "file": ".env",
+      "line": 31,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'minioadmin123' found in .env file."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 10,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'knowledge123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 97,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'knowledge123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 116,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'knowledge123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 280,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'knowledge123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 30,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'neo4j123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 119,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'neo4j123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 52,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 72,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 93,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 120,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 123,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'admin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 72,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'minioadmin123' found in docker-compose.yml."
+    },
+    {
+      "check": "weak_password_in_docker_compose",
+      "file": "docker-compose.yml",
+      "line": 123,
+      "severity": "MEDIUM",
+      "message": "Weak/default password 'minioadmin123' found in docker-compose.yml."
+    }
+  ]
+}

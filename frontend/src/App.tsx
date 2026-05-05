@@ -9,6 +9,21 @@ import Settings from './pages/Settings'
 import Login from './pages/Login'
 import { AuthProvider } from './hooks/useAuth'
 
+// Ontology Pages
+import ObjectTypeList from './pages/ontology/ObjectTypeList'
+import ObjectTypeDetail from './pages/ontology/ObjectTypeDetail'
+import LinkTypeList from './pages/ontology/LinkTypeList'
+import InterfaceList from './pages/ontology/InterfaceList'
+import ActionTypeList from './pages/ontology/ActionTypeList'
+import FunctionList from './pages/ontology/FunctionList'
+
+// Object View
+import ObjectView from './pages/objects/ObjectView'
+
+// AIP Pages
+import Chat from './pages/aip/Chat'
+import RAGSearch from './pages/aip/RAGSearch'
+
 function App() {
   return (
     <AuthProvider>
@@ -22,6 +37,21 @@ function App() {
           <Route path="decision-flow" element={<DecisionFlow />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
+
+          {/* Ontology Routes */}
+          <Route path="ontology/object-types" element={<ObjectTypeList />} />
+          <Route path="ontology/object-types/:id" element={<ObjectTypeDetail />} />
+          <Route path="ontology/link-types" element={<LinkTypeList />} />
+          <Route path="ontology/interfaces" element={<InterfaceList />} />
+          <Route path="ontology/action-types" element={<ActionTypeList />} />
+          <Route path="ontology/functions" element={<FunctionList />} />
+
+          {/* Object View */}
+          <Route path="objects/:type/:id" element={<ObjectView />} />
+
+          {/* AIP Routes */}
+          <Route path="aip/chat" element={<Chat />} />
+          <Route path="aip/rag" element={<RAGSearch />} />
         </Route>
       </Routes>
     </AuthProvider>

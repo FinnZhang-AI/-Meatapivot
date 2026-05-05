@@ -67,7 +67,7 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    logger.info("Starting Meatapivot...")
+    logger.info("Starting Knowledge Decision Platform...")
     
     # Initialize connections (with error handling for degraded mode)
     try:
@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("Shutting down Meatapivot...")
+    logger.info("Shutting down Knowledge Decision Platform...")
     try:
         await neo4j_client.close()
     except Exception:
@@ -131,7 +131,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Meatapivot - Open Source Alternative to Palantir",
+    description="Enterprise Knowledge Decision Platform - Open Source Alternative to Palantir",
     lifespan=lifespan
 )
 app.state.limiter = limiter
@@ -168,6 +168,21 @@ app.include_router(auth.router, prefix=settings.API_PREFIX, tags=["Authenticatio
 app.include_router(documents.router, prefix=f"{settings.API_PREFIX}/documents", tags=["Documents"])
 app.include_router(decision_flow.router, prefix=f"{settings.API_PREFIX}/decision-flows", tags=["Decision Flows"])
 app.include_router(knowledge_graph.router, prefix=f"{settings.API_PREFIX}/knowledge-graph", tags=["Knowledge Graph"])
+
+# NEW: Ontology and AIP routers (imported with lazy handling for missing deps)
+try:
+    from app.routers import ontology
+    app.include_router(ontology.router, prefix=f"{settings.API_PREFIX}/ontology", tags=["Ontology"])
+    logger.info("Ontology router registered")
+except Exception as e:
+    logger.warning(f"Ontology router not available: {e}")
+
+try:
+    from app.routers import aip
+    app.include_router(aip.router, prefix=f"{settings.API_PREFIX}/aip", tags=["AIP"])
+    logger.info("AIP router registered")
+except Exception as e:
+    logger.warning(f"AIP router not available: {e}")
 
 
 @app.get("/")

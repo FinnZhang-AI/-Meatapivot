@@ -29,14 +29,61 @@ const Layout = () => {
     return null
   }
 
-  const navigation = [
+  const mainNavigation = [
     { name: '仪表盘', href: '/dashboard', icon: '📊' },
     { name: '知识图谱', href: '/knowledge-graph', icon: '🕸️' },
     { name: '文档管理', href: '/documents', icon: '📁' },
     { name: '决策流', href: '/decision-flow', icon: '⚙️' },
     { name: '分析报表', href: '/analytics', icon: '📈' },
+  ]
+
+  const ontologyNavigation = [
+    { name: '对象类型', href: '/ontology/object-types', icon: '📦' },
+    { name: '关系类型', href: '/ontology/link-types', icon: '🔗' },
+    { name: '接口契约', href: '/ontology/interfaces', icon: '📋' },
+    { name: '动作类型', href: '/ontology/action-types', icon: '⚡' },
+    { name: '函数库', href: '/ontology/functions', icon: '🔧' },
+  ]
+
+  const aipNavigation = [
+    { name: 'AI 对话', href: '/aip/chat', icon: '🤖' },
+    { name: 'RAG 搜索', href: '/aip/rag', icon: '🔍' },
+  ]
+
+  const systemNavigation = [
     { name: '系统设置', href: '/settings', icon: '🔧' },
   ]
+
+  const isActive = (href: string) => location.pathname === href || location.pathname.startsWith(href + '/')
+
+  const NavItem = ({ item }: { item: { name: string; href: string; icon: string } }) => (
+    <li>
+      <Link
+        to={item.href}
+        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer text-sm ${
+          isActive(item.href)
+            ? 'bg-primary/10 text-primary font-semibold'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+        }`}
+      >
+        <span className="text-lg">{item.icon}</span>
+        <span>{item.name}</span>
+      </Link>
+    </li>
+  )
+
+  const NavGroup = ({ title, items }: { title: string; items: typeof mainNavigation }) => (
+    <div className="mb-4">
+      <h3 className="px-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+        {title}
+      </h3>
+      <ul className="space-y-1">
+        {items.map((item) => (
+          <NavItem key={item.name} item={item} />
+        ))}
+      </ul>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -50,29 +97,16 @@ const Layout = () => {
           {/* Logo */}
           <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700">
             <h1 className="text-xl font-bold text-primary">
-              🔷 Knowledge Platform
+              🔷 Meatapivot
             </h1>
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-4">
-            <ul className="space-y-2">
-              {navigation.map((item) => (
-                <li key={item.name}>
-                  <Link
-                    to={item.href}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer ${
-                      location.pathname === item.href
-                        ? 'bg-primary/10 text-primary font-semibold'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="text-xl">{item.icon}</span>
-                    <span>{item.name}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <NavGroup title="核心应用" items={mainNavigation} />
+            <NavGroup title="本体语义层" items={ontologyNavigation} />
+            <NavGroup title="AIP 智能层" items={aipNavigation} />
+            <NavGroup title="系统" items={systemNavigation} />
           </nav>
 
           {/* User Profile */}
@@ -81,11 +115,11 @@ const Layout = () => {
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
                 {user?.name?.charAt(0) || 'U'}
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                   {user?.name || 'User'}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                   {user?.email || 'user@example.com'}
                 </p>
               </div>
@@ -122,7 +156,7 @@ const Layout = () => {
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
               
-              <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer">
+              <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer text-sm font-medium">
                 + 新建
               </button>
             </div>

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Meatapivot"
     APP_VERSION: str = "1.0.0"
+    # SECURITY: DEBUG must be set to False in production
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"
     
@@ -80,6 +81,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
     ]
+    
+    # LLM Gateway - One API
+    ONE_API_URL: str = os.getenv("ONE_API_URL", "http://localhost:3005/v1")
+    ONE_API_KEY: str = os.getenv("ONE_API_KEY", "")
+    DEFAULT_LLM_MODEL: str = os.getenv("DEFAULT_LLM_MODEL", "gpt-4o")
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    LLM_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("LLM_RATE_LIMIT_PER_MINUTE", "60"))
     
     # File Upload
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
