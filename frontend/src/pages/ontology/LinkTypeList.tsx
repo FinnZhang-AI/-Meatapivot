@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { useLinkTypes, useCreateObjectType } from '../../hooks/useOntology'
-import type { LinkType } from '../../types/ontology'
+import { useLinkTypes } from '../../hooks/useOntology'
 
 export default function LinkTypeList() {
   const { user } = useAuth()

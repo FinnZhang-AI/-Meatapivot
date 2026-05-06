@@ -2,7 +2,6 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState, useCallback, useRef } from 'react'
 import { useAuth } from './useAuth'
 import type {
-  ChatMessage,
   ChatRequest,
   ChatResponse,
   SSEChunk,

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAIPStore } from '../../stores/aipStore'
 import { useStreamChat, useChat } from '../../hooks/useAIP'
-import { useAuth } from '../../hooks/useAuth'
 import ChatMessageBubble from '../../components/aip/ChatMessageBubble'
 import type { ChatMessage } from '../../types/aip'
 

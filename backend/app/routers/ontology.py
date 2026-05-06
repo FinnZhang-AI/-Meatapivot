@@ -1,6 +1,7 @@
 """Ontology CRUD API Router"""
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -352,6 +353,72 @@ async def list_objects_by_type(
     )
     type_names = {row[0]: row[1] for row in type_result.all()}
     return [_obj_resp(o, type_names.get(o.object_type_id, "")) for o in objs]
+
+
+@router.get("/objects/{object_id}", response_model=OntologyObjectResponse)
+async def get_object(
+    object_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single object instance by ID."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyObject).where(
+            OntologyObject.id == object_id,
+            OntologyObject.tenant_id == tenant_id,
+        )
+    )
+    obj = result.scalar_one_or_none()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Object not found")
+
+    type_result = await db.execute(
+        select(OntologyObjectType.name).where(OntologyObjectType.id == obj.object_type_id)
+    )
+    type_name = type_result.scalar() or ""
+    return _obj_resp(obj, type_name)
+
+
+@router.get("/objects/{object_id}/links", response_model=list[OntologyLinkResponse])
+async def get_object_links(
+    object_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all links connected to an object (as source or target)."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyLink).where(
+            OntologyLink.tenant_id == tenant_id,
+            (OntologyLink.source_object_id == object_id) | (OntologyLink.target_object_id == object_id),
+        )
+    )
+    links = result.scalars().all()
+
+    # Fetch link type names
+    link_type_ids = {l.link_type_id for l in links}
+    lt_result = await db.execute(
+        select(OntologyLinkType.id, OntologyLinkType.name).where(
+            OntologyLinkType.id.in_(link_type_ids)
+        )
+    )
+    link_type_names = {row[0]: row[1] for row in lt_result.all()}
+
+    return [
+        OntologyLinkResponse(
+            id=l.id,
+            tenant_id=l.tenant_id,
+            link_type_id=l.link_type_id,
+            link_type_name=link_type_names.get(l.link_type_id, ""),
+            source_object_id=l.source_object_id,
+            target_object_id=l.target_object_id,
+            properties=l.properties or {},
+            neo4j_rel_id=l.neo4j_rel_id,
+            created_at=l.created_at,
+        )
+        for l in links
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -859,6 +926,27 @@ async def update_action_type(id: UUID, data: ActionTypeUpdate, db: AsyncSession 
     )
 
 
+@router.delete("/action-types/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_action_type(
+    id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyActionType).where(
+            OntologyActionType.id == id,
+            OntologyActionType.tenant_id == tenant_id,
+        )
+    )
+    at = result.scalar_one_or_none()
+    if not at:
+        raise HTTPException(status_code=404, detail="Action type not found")
+    at.status = "archived"
+    await db.commit()
+    return None
+
+
 @router.post("/action-types/{id}/execute", response_model=ActionExecuteResponse)
 async def execute_action(
     id: UUID,
@@ -1048,6 +1136,27 @@ async def update_function(id: UUID, data: FunctionUpdate, db: AsyncSession = Dep
     )
 
 
+@router.delete("/functions/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_function(
+    id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyFunction).where(
+            OntologyFunction.id == id,
+            OntologyFunction.tenant_id == tenant_id,
+        )
+    )
+    fn = result.scalar_one_or_none()
+    if not fn:
+        raise HTTPException(status_code=404, detail="Function not found")
+    fn.status = "archived"
+    await db.commit()
+    return None
+
+
 @router.post("/functions/{id}/test", response_model=ActionExecuteResponse)
 async def test_function(
     id: UUID,
@@ -1187,7 +1296,7 @@ async def export_ontology(
     }
 
 
-from datetime import datetime  # noqa: E402
+
 
 
 @router.post("/import")

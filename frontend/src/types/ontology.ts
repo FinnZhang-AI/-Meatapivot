@@ -115,6 +115,8 @@ export interface OntologyLink {
   linkTypeName?: string
   sourceObjectId: string
   targetObjectId: string
+  targetObjectKey?: string
+  targetObjectType?: string
   properties?: Record<string, any>
   neo4jRelId?: string
   createdAt?: string
@@ -175,6 +177,8 @@ export interface GraphNode {
   label: string
   objectType: string
   properties?: Record<string, any>
+  x?: number
+  y?: number
 }
 
 export interface GraphEdge {

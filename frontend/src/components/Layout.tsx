@@ -113,11 +113,11 @@ const Layout = () => {
           <div className="p-4 border-t border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
-                {user?.name?.charAt(0) || 'U'}
+                {user?.username?.charAt(0) || 'U'}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                  {user?.name || 'User'}
+                  {user?.username || 'User'}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                   {user?.email || 'user@example.com'}

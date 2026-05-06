@@ -4,12 +4,10 @@ import type { RAGSource } from '../../types/aip'
 
 export default function RAGSearch() {
   const [query, setQuery] = useState('')
-  const [submittedQuery, setSubmittedQuery] = useState('')
   const { mutateAsync: ragQuery, isPending, data: result } = useRAGQuery()
 
   const handleSearch = async () => {
     if (!query.trim()) return
-    setSubmittedQuery(query)
     await ragQuery({ query: query.trim(), topK: 5, searchMode: 'hybrid' })
   }
 

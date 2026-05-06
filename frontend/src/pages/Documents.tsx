@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const Documents = () => {
-  const [documents, setDocuments] = useState([
+  const [documents] = useState([
     { 
       id: 1, 
       name: '企业年度报告 2023.pdf', 

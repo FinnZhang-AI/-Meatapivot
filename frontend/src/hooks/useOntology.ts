@@ -3,6 +3,7 @@ import { useAuth } from './useAuth'
 import type {
   ObjectType,
   OntologyObject,
+  OntologyLink,
   LinkType,
   InterfaceDef,
   ActionType,
@@ -100,7 +101,7 @@ export function useDeleteObjectType() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, tenantId }: { id: string; tenantId: string }) => {
+    mutationFn: async ({ id }: { id: string; tenantId: string }) => {
       const response = await fetch(`${API_BASE_URL}/ontology/object-types/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(token),
@@ -123,7 +124,7 @@ export function useObjects(typeId: string) {
     queryKey: ['objects', typeId],
     queryFn: async () => {
       const response = await fetch(
-        `${API_BASE_URL}/ontology/objects?type_id=${encodeURIComponent(typeId)}`,
+        `${API_BASE_URL}/ontology/object-types/${encodeURIComponent(typeId)}/objects`,
         { headers: getAuthHeaders(token) }
       )
       return handleResponse<OntologyObject[]>(response)
@@ -136,16 +137,27 @@ export function useCreateObject() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (object: Partial<OntologyObject>) => {
-      const response = await fetch(`${API_BASE_URL}/ontology/objects`, {
-        method: 'POST',
-        headers: getAuthHeaders(token),
-        body: JSON.stringify(object),
-      })
+    mutationFn: async ({
+      objectTypeId,
+      objectKey,
+      properties,
+    }: {
+      objectTypeId: string
+      objectKey: string
+      properties?: Record<string, any>
+    }) => {
+      const response = await fetch(
+        `${API_BASE_URL}/ontology/object-types/${encodeURIComponent(objectTypeId)}/objects`,
+        {
+          method: 'POST',
+          headers: getAuthHeaders(token),
+          body: JSON.stringify({ objectKey, properties }),
+        }
+      )
       return handleResponse<OntologyObject>(response)
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['objects', data.objectTypeId] })
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['objects', variables.objectTypeId] })
     },
   })
 }
@@ -210,6 +222,17 @@ export function useFunctions(tenantId: string) {
   })
 }
 
+// Search
+export interface SearchResponse {
+  query: string
+  results: OntologyObject[]
+  total: number
+  vector_hits: number
+  graph_hits: number
+  reranked: boolean
+  duration_ms: number
+}
+
 export function useSearch() {
   const { token } = useAuth()
   return useMutation({
@@ -217,13 +240,77 @@ export function useSearch() {
       q: string
       tenantId?: string
       objectTypes?: string[]
+      searchMode?: string
     }) => {
       const response = await fetch(`${API_BASE_URL}/ontology/search`, {
         method: 'POST',
         headers: getAuthHeaders(token),
-        body: JSON.stringify(query),
+        body: JSON.stringify({
+          query: query.q,
+          tenant_id: query.tenantId,
+          object_types: query.objectTypes,
+          search_mode: query.searchMode || 'hybrid',
+        }),
       })
-      return handleResponse<OntologyObject[]>(response)
+      return handleResponse<SearchResponse>(response)
+    },
+  })
+}
+
+// Single object + links
+export function useObject(objectId: string) {
+  const { token } = useAuth()
+  return useQuery<OntologyObject>({
+    queryKey: ['object', objectId],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/ontology/objects/${objectId}`, {
+        headers: getAuthHeaders(token),
+      })
+      return handleResponse<OntologyObject>(response)
+    },
+    enabled: !!objectId,
+  })
+}
+
+export function useObjectLinks(objectId: string) {
+  const { token } = useAuth()
+  return useQuery<OntologyLink[]>({
+    queryKey: ['objectLinks', objectId],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/ontology/objects/${objectId}/links`, {
+        headers: getAuthHeaders(token),
+      })
+      return handleResponse<OntologyLink[]>(response)
+    },
+    enabled: !!objectId,
+  })
+}
+
+export function useExecuteAction() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      actionTypeId,
+      targetObjectId,
+      parameters,
+    }: {
+      actionTypeId: string
+      targetObjectId: string
+      parameters?: Record<string, any>
+    }) => {
+      const response = await fetch(
+        `${API_BASE_URL}/ontology/action-types/${actionTypeId}/execute`,
+        {
+          method: 'POST',
+          headers: getAuthHeaders(token),
+          body: JSON.stringify({ target_object_id: targetObjectId, parameters }),
+        }
+      )
+      return handleResponse<{ success: boolean; message?: string }>(response)
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['object', variables.targetObjectId] })
     },
   })
 }
@@ -239,5 +326,233 @@ export function useSubgraph(objectId: string) {
       return handleResponse<SubgraphResponse>(response)
     },
     enabled: !!objectId,
+  })
+}
+
+// LinkType CRUD
+export function useCreateLinkType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (linkType: Partial<LinkType>) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/link-types`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(linkType),
+      })
+      return handleResponse<LinkType>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['linkTypes', data.tenantId] })
+    },
+  })
+}
+
+export function useUpdateLinkType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<LinkType> }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/link-types/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(data),
+      })
+      return handleResponse<LinkType>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['linkTypes', data.tenantId] })
+    },
+  })
+}
+
+export function useDeleteLinkType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; tenantId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/link-types/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['linkTypes', variables.tenantId] })
+    },
+  })
+}
+
+// Interface CRUD
+export function useCreateInterface() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (iface: Partial<InterfaceDef>) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/interfaces`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(iface),
+      })
+      return handleResponse<InterfaceDef>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['interfaces', data.tenantId] })
+    },
+  })
+}
+
+export function useUpdateInterface() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InterfaceDef> }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/interfaces/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(data),
+      })
+      return handleResponse<InterfaceDef>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['interfaces', data.tenantId] })
+    },
+  })
+}
+
+export function useDeleteInterface() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; tenantId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/interfaces/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['interfaces', variables.tenantId] })
+    },
+  })
+}
+
+// ActionType CRUD
+export function useCreateActionType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (actionType: Partial<ActionType>) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/action-types`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(actionType),
+      })
+      return handleResponse<ActionType>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['actionTypes', data.tenantId] })
+    },
+  })
+}
+
+export function useUpdateActionType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ActionType> }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/action-types/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(data),
+      })
+      return handleResponse<ActionType>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['actionTypes', data.tenantId] })
+    },
+  })
+}
+
+export function useDeleteActionType() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; tenantId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/action-types/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['actionTypes', variables.tenantId] })
+    },
+  })
+}
+
+// Function CRUD
+export function useCreateFunction() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (fn: Partial<FunctionDef>) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/functions`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(fn),
+      })
+      return handleResponse<FunctionDef>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['functions', data.tenantId] })
+    },
+  })
+}
+
+export function useUpdateFunction() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<FunctionDef> }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/functions/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(data),
+      })
+      return handleResponse<FunctionDef>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['functions', data.tenantId] })
+    },
+  })
+}
+
+export function useDeleteFunction() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; tenantId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/functions/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['functions', variables.tenantId] })
+    },
   })
 }

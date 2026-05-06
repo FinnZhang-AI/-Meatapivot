@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react'
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
-import { ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts'
+import { LineChart, Line, PieChart, Pie, Cell } from 'recharts'
+import { ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
+  const stats = {
     totalEntities: 12847,
     totalDocuments: 3421,
     activeFlows: 28,
     todayQueries: 1563,
-  })
+  }
 
   // Mock data for charts
   const queryTrendData = [
@@ -187,7 +186,7 @@ const Dashboard = () => {
                   label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
-                  {entityTypeData.map((entry, index) => (
+                  {entityTypeData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { ForceGraph2D } from 'react-force-graph-2d'
+import ForceGraph2D from 'react-force-graph-2d'
 
 const KnowledgeGraph = () => {
-  const [graphData, setGraphData] = useState({ nodes: [], links: [] })
-  const [selectedNode, setSelectedNode] = useState(null)
+  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] })
+  const [selectedNode, setSelectedNode] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
-  const fgRef = useRef()
+  const fgRef = useRef<any>()
 
   // Mock graph data
   useEffect(() => {
@@ -47,7 +47,7 @@ const KnowledgeGraph = () => {
     { value: 'location', label: '地点', color: '#EF4444' },
   ]
 
-  const handleNodeClick = (node) => {
+  const handleNodeClick = (node: any) => {
     setSelectedNode(node)
     if (fgRef.current) {
       fgRef.current.centerZoomGraph(node.x, node.y, 2)

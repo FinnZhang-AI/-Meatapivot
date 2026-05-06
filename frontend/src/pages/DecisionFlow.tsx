@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const DecisionFlow = () => {
-  const [flows, setFlows] = useState([
+  const [flows] = useState([
     { 
       id: 1, 
       name: '企业风险评估流程', 
@@ -40,7 +40,7 @@ const DecisionFlow = () => {
     },
   ])
 
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [, setShowCreateModal] = useState(false)
 
   const getStatusBadge = (status: string) => {
     const config = {

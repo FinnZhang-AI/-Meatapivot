@@ -8,7 +8,7 @@ import {
   useActionTypes,
 } from '../../hooks/useOntology'
 import PropertyTable from '../../components/ontology/PropertyTable'
-import type { OntologyObject, PropertyDef } from '../../types/ontology'
+import type { OntologyObject } from '../../types/ontology'
 
 const TABS = ['概览', '属性', '关系', '动作', '对象实例']
 
@@ -47,8 +47,9 @@ export default function ObjectTypeDetail() {
   const handleCreateObject = async () => {
     if (!newObject.objectKey) return
     await createObjectMutation.mutateAsync({
-      ...newObject,
-      objectTypeId: id,
+      objectTypeId: id!,
+      objectKey: newObject.objectKey,
+      properties: newObject.properties,
     })
     setShowCreateObjectModal(false)
     setNewObject({ objectKey: '', properties: {} })

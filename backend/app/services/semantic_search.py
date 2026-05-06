@@ -11,6 +11,7 @@ from app.models.ontology_schemas import (
     OntologySearchRequest, OntologySearchResponse, SearchResultItem
 )
 from app.services.neo4j_client import neo4j_client
+from app.services.milvus_client import milvus_client
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +69,30 @@ class SemanticSearchService:
         object_types: Optional[List[str]],
         top_k: int
     ) -> List[SearchResultItem]:
-        """Vector similarity search (placeholder for Milvus integration)"""
+        """Vector similarity search via Milvus"""
         logger.info(f"Vector search called with query: {query}, types: {object_types}")
-        
-        return []
+        results = []
+        try:
+            hits = milvus_client.search(
+                tenant_id=self.tenant_id,
+                query_text=query,
+                top_k=top_k,
+                object_types=object_types,
+            )
+            for hit in hits:
+                results.append(SearchResultItem(
+                    object_id=hit["object_id"],
+                    object_type=hit["object_type"],
+                    object_key=hit["metadata"].get("object_key", hit["object_id"]),
+                    label=hit["metadata"].get("object_key", hit["object_id"]),
+                    score=hit["score"],
+                    source="vector",
+                    explanation=f"Vector similarity score {hit['score']:.3f}",
+                    properties_preview=hit["metadata"],
+                ))
+        except Exception as e:
+            logger.warning(f"Vector search unavailable (Milvus error): {e}")
+        return results
     
     async def _graph_search(
         self,
