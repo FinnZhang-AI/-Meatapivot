@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import {
   useObjectTypes,
   useCreateObjectType,
+  useUpdateObjectType,
   useDeleteObjectType,
 } from '../../hooks/useOntology'
 import type { ObjectType, PropertyDef } from '../../types/ontology'
@@ -20,23 +21,27 @@ const COMPILE_STYLES: Record<string, string> = {
   error: 'bg-red-100 text-red-700',
 }
 
+const EMPTY_FORM: Partial<ObjectType> = {
+  name: '',
+  displayName: '',
+  description: '',
+  icon: 'box',
+  properties: [],
+  implementedInterfaces: [],
+}
+
 export default function ObjectTypeList() {
   const { user } = useAuth()
   const tenantId = user?.tenant_id || ''
   const { data: objectTypes, isLoading, error } = useObjectTypes(tenantId)
   const createMutation = useCreateObjectType()
+  const updateMutation = useUpdateObjectType()
   const deleteMutation = useDeleteObjectType()
 
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState<Partial<ObjectType>>({
-    name: '',
-    displayName: '',
-    description: '',
-    icon: 'box',
-    properties: [],
-    implementedInterfaces: [],
-  })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<Partial<ObjectType>>(EMPTY_FORM)
   const [newProp, setNewProp] = useState<Partial<PropertyDef>>({
     name: '',
     type: 'string',
@@ -47,6 +52,25 @@ export default function ObjectTypeList() {
     ot.name.toLowerCase().includes(search.toLowerCase()) ||
     (ot.displayName || '').toLowerCase().includes(search.toLowerCase())
   )
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
+
+  const openEdit = (ot: ObjectType) => {
+    setEditingId(ot.id)
+    setForm({
+      name: ot.name,
+      displayName: ot.displayName || '',
+      description: ot.description || '',
+      icon: ot.icon || 'box',
+      properties: ot.properties ? [...ot.properties] : [],
+      implementedInterfaces: ot.implementedInterfaces ? [...ot.implementedInterfaces] : [],
+    })
+    setShowModal(true)
+  }
 
   const handleAddProperty = () => {
     if (!newProp.name) return
@@ -66,9 +90,14 @@ export default function ObjectTypeList() {
 
   const handleSubmit = async () => {
     if (!form.name) return
-    await createMutation.mutateAsync(form)
+    if (editingId) {
+      await updateMutation.mutateAsync({ id: editingId, data: form })
+    } else {
+      await createMutation.mutateAsync(form)
+    }
     setShowModal(false)
-    setForm({ name: '', displayName: '', description: '', icon: 'box', properties: [], implementedInterfaces: [] })
+    setForm(EMPTY_FORM)
+    setEditingId(null)
   }
 
   const handleDelete = async (id: string) => {
@@ -81,7 +110,7 @@ export default function ObjectTypeList() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">对象类型</h1>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openCreate}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
         >
           + 新建对象类型
@@ -135,6 +164,7 @@ export default function ObjectTypeList() {
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{ot.version}</td>
                 <td className="px-4 py-3 text-right space-x-2">
                   <Link to={`/ontology/object-types/${ot.id}`} className="text-primary hover:underline text-xs">查看</Link>
+                  <button onClick={() => openEdit(ot)} className="text-blue-500 hover:text-blue-700 text-xs">编辑</button>
                   <button onClick={() => handleDelete(ot.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
                 </td>
               </tr>
@@ -150,11 +180,13 @@ export default function ObjectTypeList() {
         </table>
       </div>
 
-      {/* Create Modal */}
+      {/* Create / Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">新建对象类型</h2>
+            <h2 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">
+              {editingId ? '编辑对象类型' : '新建对象类型'}
+            </h2>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -232,7 +264,9 @@ export default function ObjectTypeList() {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-              <button onClick={handleSubmit} className="px-4 py-2 bg-primary text-white rounded-lg text-sm">创建</button>
+              <button onClick={handleSubmit} className="px-4 py-2 bg-primary text-white rounded-lg text-sm">
+                {editingId ? '保存' : '创建'}
+              </button>
             </div>
           </div>
         </div>
