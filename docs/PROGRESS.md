@@ -1,7 +1,7 @@
 # Meatapivot 开发进度报告
 
-> **生成日期**：2026-05-06  
-> **版本**：v2.0-plan-20260506  
+> **生成日期**：2026-05-07  
+> **版本**：v2.0-plan-20260507  
 > **基准文档**：`docs/TASKS.md`（PRD v2.0 拆分）
 
 ---
@@ -21,13 +21,13 @@
 
 | 模块 | 任务数 | 总工时 | 优先级 | 完成数 | 进度 |
 |:-----|:-------|:-------|:-------|:-------|:-----|
-| INF：基础设施与集成 | 4 | 24h | P1 | 1 | 25% |
-| ONT：Ontology 语义层 Backend | 12 | 80h | P1 | 5 | 42% |
-| AIP：AIP 智能层 Backend | 10 | 72h | P1 | 1 | 10% |
-| APP-F：Apps 应用层 Frontend | 8 | 64h | P2 | 4 | 50% |
+| INF：基础设施与集成 | 4 | 24h | P1 | 2 | 50% |
+| ONT：Ontology 语义层 Backend | 12 | 80h | P1 | 6 | 50% |
+| AIP：AIP 智能层 Backend | 10 | 72h | P1 | 2 | 20% |
+| APP-F：Apps 应用层 Frontend | 8 | 64h | P2 | 5 | 63% |
 | FDR：Foundry 数据层 | 6 | 48h | P3 | 0 | 0% |
 
-**整体进度：~25%（Iteration 2026-05-06 已完成）**
+**整体进度：~30%（Iteration 2026-05-07 更新）**
 
 ---
 
@@ -36,21 +36,23 @@
 | 里程碑 | 计划时间 | 状态 | 备注 |
 |:-------|:---------|:-----|:-----|
 | M1：模型就绪 | Week 2 | ✅ 完成 | PostgreSQL Schema + Alembic 基线已就绪 |
-| M2：API 就绪 | Week 4 | 🟡 进行中 | Object/Link/Interface/Action/Function CRUD 已完成；待集成测试 |
-| M3：引擎就绪 | Week 6 | 🟡 进行中 | Compiler + Action Executor 骨架完成；待性能验证 |
-| M4：搜索就绪 | Week 8 | 🟡 进行中 | Milvus 部署配置完成，向量搜索已接入；待端到端验证 |
-| M5：前端就绪 | Week 10 | 🟡 进行中 | ObjectTypeList / ObjectTypeDetail / ObjectView MVP 完成 |
+| M2：API 就绪 | Week 4 | 🟡 进行中 | Object/Link/Interface/Action/Function CRUD 已完成；待补充测试覆盖 |
+| M3：引擎就绪 | Week 6 | 🟡 进行中 | Compiler + Action Executor 骨架完成；待性能验证 + 沙箱执行 |
+| M4：搜索就绪 | Week 8 | 🟡 进行中 | Milvus 部署配置完成，向量搜索已接入；待端到端验证 + RRF 重排 |
+| M5：前端就绪 | Week 10 | 🟡 进行中 | ObjectTypeList / ObjectTypeDetail / ObjectView MVP 完成；Ontology CRUD 全页面交互完成 |
 | M6：智能就绪 | Week 12 | 未开始 | 依赖 M4 + M5 |
 | M7：数据就绪 | Week 14 | 未开始 | 依赖 M6 |
 | M8：发布就绪 | Week 16 | 未开始 | 全量集成测试 |
 
 ---
 
-## 当前阶段重点（Iteration 2026-05-06 已完成）
+## 历史迭代记录
+
+### Iteration 2026-05-06（已完成）
 
 **目标**：完成后端联调修复 + 前端 Object View MVP
 
-### 已完成任务
+#### 已完成任务
 - [x] **BE-FIX-01**：修复 ontology.py datetime import 位置
 - [x] **BE-FIX-02**：补充 requirements.txt（pymilvus + sentence-transformers）
 - [x] **BE-FEAT-01**：docker-compose.yml 添加 Milvus + etcd + minio-milvus
@@ -65,14 +67,32 @@
 - [x] **FE-FIX-02**：修复前端 TypeScript 编译错误（useAuth.ts→tsx、Graph类型、tsconfig）
 - [x] **TEST-01**：编写 backend/tests/test_ontology_core.py 核心链路测试骨架
 
-### 验证结果
-- `npm run build` ✅ 通过（前端生产构建成功）
+#### 验证结果
+- `npm run build` ✅ 通过
 - `python -m py_compile backend/app/routers/ontology.py` ✅ 通过
-- `npx tsc --noEmit` ✅ 通过（无 TypeScript 类型错误）
+- `npx tsc --noEmit` ✅ 通过
 
-### 下一迭代重点（Week 2）
+### Iteration 2026-05-07（今日提交）
+
+**目标**：补全 Ontology 管理后台全部 CRUD 交互
+
+#### 已完成任务
+- [x] **FE-FEAT-07**：ObjectTypeList 新增编辑功能（Modal 支持新建/编辑切换）
+- [x] **FE-FEAT-08**：ActionTypeList 新增新建/编辑/删除 + 目标类型选择器
+- [x] **FE-FEAT-09**：FunctionList 新增新建/编辑/删除 + 代码编辑 Modal
+- [x] **FE-FEAT-10**：InterfaceList 新增新建/编辑/删除 + 属性/关系要求配置
+- [x] **FE-FEAT-11**：LinkTypeList 新增新建/编辑/删除 + 基数与对象类型选择器
+- [x] **CR-FIX-01**：代码审查修复验证（db.commit、tenant隔离、Milvus连接复用、tsconfig严格检查）
+
+#### 验证结果
+- `npm run build` ✅ 通过（前端生产构建成功）
+- `npx tsc --noEmit` ✅ 通过（无 TypeScript 类型错误）
+- `git push origin main` ✅ 已推送
+
+### 下一迭代重点（Week 2 剩余）
 - [ ] **FE-FEAT-05**：Chat.tsx SSE 流式对话联调（对接后端 /aip/chat/stream）
 - [ ] **FE-FEAT-06**：RAGSearch.tsx 接入真实 RAG 查询
+- [ ] **AIP-FEAT-01**：对话历史持久化（本地存储 + 后端 session API）
 - [ ] **BE-FEAT-05**：编写 pytest 集成测试（≥ 15 条用例通过）
 - [ ] **OPS-01**：提供 docker-compose.light.yml（无 Milvus 轻量版）
 - [ ] **OPS-04**：编写 scripts/demo-seed.py 一键生成演示数据
@@ -87,6 +107,7 @@
 | 多租户连接池隔离复杂度 | INF-001 超期 | 先实现基础连接池，租户路由作为二期优化 | 🟡 观察中 |
 | LLM Gateway 多后端适配 | AIP-001 超期 | 优先支持 OpenAI，其余后端逐步接入 | 🟡 观察中 |
 | 前端 useOntology.ts API 路径错误 | Object View 无法展示真实数据 | 已修正为 /ontology/object-types/{id}/objects | ✅ 已解决 |
+| 对话历史未持久化 | AIP-006 体验差 | 刷新页面丢失记录；需后端 session API + 前端 localStorage | 🟡 新增观察 |
 
 ---
 
@@ -106,6 +127,7 @@
 |:-----|:-----|:---------|
 | 2026-05-06 | v2.0-plan-20260506 | 初始进度报告，基于 TASKS.md 生成，所有任务标记为未开始 |
 | 2026-05-06 | v2.0-iter-20260506 | 完成 Iteration 2026-05-06：后端联调修复 + 前端 Object View MVP，前端构建通过 |
+| 2026-05-07 | v2.0-iter-20260507 | 完成 Iteration 2026-05-07：补全 Ontology 全部 5 个管理页面的 CRUD Modal；代码审查修复全部验证通过；推送至 origin/main |
 
 ---
 

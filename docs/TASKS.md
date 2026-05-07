@@ -6,19 +6,19 @@
 
 ## 模块总览
 
-| 模块编号 | 模块名称 | 任务数 | 总估工时 | 优先级 |
-|:---------|:---------|:-------|:---------|:-------|
-| ONT | Ontology 语义层 Backend | 12 | 80h | P1 |
-| AIP | AIP 智能层 Backend | 10 | 72h | P1 |
-| APP-F | Apps 应用层 Frontend | 8 | 64h | P2 |
-| FDR | Foundry 数据层 | 6 | 48h | P3 |
-| INF | 基础设施与集成 | 4 | 24h | P1 |
+| 模块编号 | 模块名称 | 任务数 | 总估工时 | 优先级 | 已完成 | 进度 |
+|:---------|:---------|:-------|:---------|:-------|:-------|:-----|
+| ONT | Ontology 语义层 Backend | 12 | 80h | P1 | 2 项 + 7 项部分 | ~50% |
+| AIP | AIP 智能层 Backend | 10 | 72h | P1 | 0 项 + 3 项部分 | ~20% |
+| APP-F | Apps 应用层 Frontend | 8 | 64h | P2 | 2 项 + 2 项部分 | ~63% |
+| FDR | Foundry 数据层 | 6 | 48h | P3 | 0 项 | 0% |
+| INF | 基础设施与集成 | 4 | 24h | P1 | 1 项 + 2 项部分 | ~50% |
 
 ---
 
 ## 模块 ONT：Ontology 语义层 Backend
 
-### ONT-001：Ontology 数据模型（PostgreSQL）
+### ONT-001：Ontology 数据模型（PostgreSQL）✅ 已完成
 - **需求来源**：FR-ONT-001, FR-ONT-005, FR-ONT-008, FR-ONT-011, FR-ONT-016, FR-ONT-018
 - **任务描述**：
   1. 创建 `backend/app/models/ontology_models.py`，定义 SQLAlchemy 模型：
@@ -32,7 +32,7 @@
 - **依赖**：INF-001（PostgreSQL 连接基座）
 - **负责人**：Backend Dev A
 
-### ONT-002：Object Type CRUD API
+### ONT-002：Object Type CRUD API ✅ 已完成
 - **需求来源**：FR-ONT-001 ~ FR-ONT-004
 - **任务描述**：
   1. 创建 `backend/app/routers/ontology/object_types.py`
@@ -46,7 +46,7 @@
 - **依赖**：ONT-001
 - **负责人**：Backend Dev A
 
-### ONT-003：Link Type CRUD API + 关系实例管理
+### ONT-003：Link Type CRUD API + 关系实例管理 🟡 部分完成（Link Type CRUD 就绪，关系实例 Neo4j 写入待端到端验证）
 - **需求来源**：FR-ONT-005 ~ FR-ONT-007
 - **任务描述**：
   1. 创建 `backend/app/routers/ontology/link_types.py`
@@ -60,7 +60,7 @@
 - **依赖**：ONT-001, ONT-002
 - **负责人**：Backend Dev A
 
-### ONT-004：Interface 管理与校验
+### ONT-004：Interface 管理与校验 🟡 部分完成（CRUD 就绪，异步全量校验 + WebSocket 推送未实现）
 - **需求来源**：FR-ONT-008 ~ FR-ONT-010
 - **任务描述**：
   1. Interface CRUD 端点
@@ -74,7 +74,7 @@
 - **依赖**：ONT-002
 - **负责人**：Backend Dev B
 
-### ONT-005：Ontology 编译器服务
+### ONT-005：Ontology 编译器服务 🟡 骨架完成（ontology_compiler.py 已创建，待性能验证 + 增量编译）
 - **需求来源**：FR-ONT-019 ~ FR-ONT-021
 - **任务描述**：
   1. 创建 `backend/app/services/ontology_compiler.py`
@@ -93,7 +93,7 @@
 - **依赖**：ONT-002, ONT-003, ONT-004
 - **负责人**：Backend Dev B
 
-### ONT-006：Action 执行引擎
+### ONT-006：Action 执行引擎 🟡 骨架完成（action_executor.py 已创建，direct 模式可用，沙箱 + workflow 待完善）
 - **需求来源**：FR-ONT-011 ~ FR-ONT-015
 - **任务描述**：
   1. 创建 `backend/app/services/action_executor.py`
@@ -112,7 +112,7 @@
 - **依赖**：ONT-005
 - **负责人**：Backend Dev B
 
-### ONT-007：Function 管理与沙箱执行
+### ONT-007：Function 管理与沙箱执行 🟡 部分完成（CRUD 就绪，沙箱执行 + 语法预检待完善）
 - **需求来源**：FR-ONT-016 ~ FR-ONT-018
 - **任务描述**：
   1. Function CRUD 端点
@@ -126,7 +126,7 @@
 - **依赖**：ONT-006
 - **负责人**：Backend Dev C
 
-### ONT-008：语义搜索引擎（向量 + 图谱混合）
+### ONT-008：语义搜索引擎（向量 + 图谱混合）🟡 部分完成（Milvus 向量搜索已接入，RRF 混合重排 + 异步索引更新待完善）
 - **需求来源**：FR-ONT-022 ~ FR-ONT-025
 - **任务描述**：
   1. 集成 `sentence-transformers`（BGE-M3）生成 Embedding
@@ -141,7 +141,7 @@
 - **依赖**：INF-003（Milvus 部署）
 - **负责人**：Backend Dev C / MLOps
 
-### ONT-009：Ontology 导入/导出
+### ONT-009：Ontology 导入/导出 🟡 骨架完成（export/import 端点存在，冲突处理策略待完善）
 - **需求来源**：FR-ONT-026 ~ FR-ONT-027
 - **任务描述**：
   1. YAML/JSON 导出（含全部定义）
@@ -154,7 +154,7 @@
 - **依赖**：ONT-005
 - **负责人**：Backend Dev A
 
-### ONT-010：Ontology 前端管理界面
+### ONT-010：Ontology 前端管理界面 ✅ 已完成（ObjectType/LinkType/Interface/ActionType/Function 全部支持 CRUD Modal）
 - **需求来源**：配合 ONT-002 ~ ONT-004
 - **任务描述**：
   1. Object Type 列表/创建/编辑页
@@ -168,7 +168,7 @@
 - **依赖**：ONT-002, ONT-003, ONT-004
 - **负责人**：Frontend Dev A
 
-### ONT-011：语义搜索前端界面
+### ONT-011：语义搜索前端界面 ⬜ 未开始
 - **需求来源**：配合 ONT-008
 - **任务描述**：
   1. 搜索框（支持按 Object Type 过滤）
@@ -181,7 +181,7 @@
 - **依赖**：ONT-008
 - **负责人**：Frontend Dev B
 
-### ONT-012：Action 执行前端界面
+### ONT-012：Action 执行前端界面 ⬜ 未开始
 - **需求来源**：配合 ONT-006
 - **任务描述**：
   1. Action 按钮组件（动态渲染）
@@ -198,7 +198,7 @@
 
 ## 模块 AIP：AIP 智能层 Backend
 
-### AIP-001：LLM Gateway 集成（One API）
+### AIP-001：LLM Gateway 集成（One API）🟡 部分完成（OpenAI 后端已接入，限流/配额/多后端切换待完善）
 - **需求来源**：FR-AIP-001 ~ FR-AIP-004
 - **任务描述**：
   1. Docker Compose 添加 `one-api` 服务
@@ -213,7 +213,7 @@
 - **依赖**：INF-001, INF-002（Redis）
 - **负责人**：Backend Dev C
 
-### AIP-002：RAG Pipeline（本体感知检索）
+### AIP-002：RAG Pipeline（本体感知检索）🟡 部分完成（基础 RAG 查询已可用，BGE-Reranker + 实体识别待接入）
 - **需求来源**：FR-AIP-005 ~ FR-AIP-009
 - **任务描述**：
   1. 集成 `llama-index` + `milvus` 向量存储
@@ -229,7 +229,7 @@
 - **依赖**：AIP-001, ONT-008
 - **负责人**：Backend Dev C / MLOps
 
-### AIP-003：Agent Orchestrator（LangGraph）
+### AIP-003：Agent Orchestrator（LangGraph）⬜ 未开始
 - **需求来源**：FR-AIP-010 ~ FR-AIP-012
 - **任务描述**：
   1. 集成 `langgraph` + `langchain`
@@ -244,7 +244,7 @@
 - **依赖**：AIP-002
 - **负责人**：Backend Dev C / MLOps
 
-### AIP-004：Guardrails 安全校验
+### AIP-004：Guardrails 安全校验 ⬜ 未开始（依赖 guardrails-ai，已加入 requirements.txt）
 - **需求来源**：FR-AIP-013 ~ FR-AIP-016
 - **任务描述**：
   1. 输入校验：Prompt Injection / Toxicity（`guardrails-ai` 或自研规则）
@@ -258,7 +258,7 @@
 - **依赖**：AIP-001
 - **负责人**：Backend Dev C
 
-### AIP-005：AIP API 端点
+### AIP-005：AIP API 端点 🟡 部分完成（chat/chat_stream/rag 已就绪，agents 为占位符，SSE 流式可用）
 - **需求来源**：FR-AIP 全部
 - **任务描述**：
   1. 创建 `backend/app/routers/aip.py`
@@ -277,7 +277,7 @@
 - **依赖**：AIP-001 ~ AIP-004
 - **负责人**：Backend Dev C
 
-### AIP-006：LLM 对话前端界面
+### AIP-006：LLM 对话前端界面 🟡 部分完成（Chat 界面 + SSE 流式 + 模型选择已完成，对话历史持久化待实现）
 - **需求来源**：配合 AIP-005
 - **任务描述**：
   1. Chat 界面（类似 ChatGPT，支持 Markdown）
@@ -291,7 +291,7 @@
 - **依赖**：AIP-005
 - **负责人**：Frontend Dev B
 
-### AIP-007：RAG 查询前端界面
+### AIP-007：RAG 查询前端界面 ⬜ 未开始
 - **需求来源**：配合 AIP-002
 - **任务描述**：
   1. RAG 搜索页（独立或集成到全局搜索）
@@ -302,7 +302,7 @@
 - **依赖**：AIP-005, AIP-006
 - **负责人**：Frontend Dev B
 
-### AIP-008：Agent 工作流可视化
+### AIP-008：Agent 工作流可视化 ⬜ 未开始
 - **需求来源**：配合 AIP-003
 - **任务描述**：
   1. Agent 执行过程时序图（Step-by-step）
@@ -313,7 +313,7 @@
 - **依赖**：AIP-005, AIP-006
 - **负责人**：Frontend Dev B
 
-### AIP-009：Prompt 管理后台
+### AIP-009：Prompt 管理后台 ⬜ 未开始
 - **需求来源**：配合 AIP-001
 - **任务描述**：
   1. Prompt 模板 CRUD
@@ -324,7 +324,7 @@
 - **依赖**：AIP-005
 - **负责人**：Frontend Dev A
 
-### AIP-010：LLM 成本分析仪表盘
+### AIP-010：LLM 成本分析仪表盘 ⬜ 未开始
 - **需求来源**：配合 AIP-001
 - **任务描述**：
   1. 按模型/租户/时间段的 Token 消耗统计
@@ -338,7 +338,7 @@
 
 ## 模块 APP-F：Apps 应用层 Frontend
 
-### APP-001：Object View 对象详情页
+### APP-001：Object View 对象详情页 ✅ 已完成（接入真实 API，子图可视化保留，支持 Actions）
 - **需求来源**：FR-APP-001 ~ FR-APP-005
 - **任务描述**：
   1. 路由：`/objects/{object_type}/{object_id}`
@@ -355,7 +355,7 @@
 - **依赖**：ONT-003, ONT-012
 - **负责人**：Frontend Dev B
 
-### APP-002：PropertyTable 组件
+### APP-002：PropertyTable 组件 🟡 部分完成（基础渲染 + 编辑模式已就绪，失焦自动保存待实现）
 - **需求来源**：配合 APP-001
 - **任务描述**：
   1. 按 ObjectType 定义动态渲染属性字段
@@ -369,7 +369,7 @@
 - **依赖**：APP-001
 - **负责人**：Frontend Dev B
 
-### APP-003：RelatedObjects 组件
+### APP-003：RelatedObjects 组件 🟡 部分完成（按 Link Type 分组展示已就绪，增删关系待实现）
 - **需求来源**：配合 APP-001
 - **任务描述**：
   1. 按 Link Type 分组展示关联对象
@@ -383,7 +383,7 @@
 - **依赖**：APP-001
 - **负责人**：Frontend Dev B
 
-### APP-004：ActionButton + ActionDialog 组件
+### APP-004：ActionButton + ActionDialog 组件 ⬜ 未开始
 - **需求来源**：配合 ONT-012
 - **任务描述**：
   1. ActionButton：动态渲染，根据权限显示/禁用
@@ -397,7 +397,7 @@
 - **依赖**：ONT-012
 - **负责人**：Frontend Dev B
 
-### APP-005：Workshop App Builder（XYFlow 扩展）
+### APP-005：Workshop App Builder（XYFlow 扩展）⬜ 未开始
 - **需求来源**：FR-APP-006 ~ FR-APP-008
 - **任务描述**：
   1. 左侧组件面板：Object Table / Filter / Chart / Action Button / Link Navigator
@@ -412,7 +412,7 @@
 - **依赖**：APP-001 ~ APP-004
 - **负责人**：Frontend Dev A + Frontend Dev B
 
-### APP-006：Ontology 管理后台导航与布局
+### APP-006：Ontology 管理后台导航与布局 ✅ 已完成（Layout.tsx 导航 + 路由已就绪，权限控制待完善）
 - **需求来源**：配合 ONT-010
 - **任务描述**：
   1. 侧边栏新增 "Ontology" 菜单组
@@ -425,7 +425,7 @@
 - **依赖**：ONT-010
 - **负责人**：Frontend Dev A
 
-### APP-007：全局搜索升级（集成语义搜索）
+### APP-007：全局搜索升级（集成语义搜索）⬜ 未开始
 - **需求来源**：配合 ONT-008, AIP-002
 - **任务描述**：
   1. 搜索框支持模式切换：Keyword / Semantic / RAG
@@ -439,7 +439,7 @@
 - **依赖**：ONT-011, AIP-007
 - **负责人**：Frontend Dev A
 
-### APP-008：仪表盘首页升级
+### APP-008：仪表盘首页升级 ⬜ 未开始
 - **需求来源**：综合
 - **任务描述**：
   1. Ontology 统计卡片（Object Type 数 / 实例数 / Action 执行数）
@@ -457,7 +457,7 @@
 
 ## 模块 FDR：Foundry 数据层
 
-### FDR-001：SeaTunnel 集成（数据管道）
+### FDR-001：SeaTunnel 集成（数据管道）⬜ 未开始
 - **需求来源**：FR-FDR-001 ~ FR-FDR-003
 - **任务描述**：
   1. Docker Compose 添加 `seatunnel` 服务
@@ -471,7 +471,7 @@
 - **依赖**：INF-001
 - **负责人**：Data Engineer
 
-### FDR-002：可视化管道配置器（Frontend）
+### FDR-002：可视化管道配置器（Frontend）⬜ 未开始
 - **需求来源**：配合 FDR-001
 - **任务描述**：
   1. 表单化配置 Source（数据库连接 / 文件路径）
@@ -486,7 +486,7 @@
 - **依赖**：FDR-001
 - **负责人**：Frontend Dev A
 
-### FDR-003：CDC 实时同步（Debezium）
+### FDR-003：CDC 实时同步（Debezium）⬜ 未开始
 - **需求来源**：FR-FDR-004 ~ FR-FDR-005
 - **任务描述**：
   1. Docker Compose 添加 `debezium` 服务
@@ -500,7 +500,7 @@
 - **依赖**：FDR-001
 - **负责人**：Data Engineer
 
-### FDR-004：数据血缘（Apache Atlas）
+### FDR-004：数据血缘（Apache Atlas）⬜ 未开始
 - **需求来源**：FR-FDR-006 ~ FR-FDR-007
 - **任务描述**：
   1. Docker Compose 添加 `atlas` 服务
@@ -514,7 +514,7 @@
 - **依赖**：FDR-001, FDR-003
 - **负责人**：Data Engineer
 
-### FDR-005：数据质量检查
+### FDR-005：数据质量检查 ⬜ 未开始
 - **需求来源**：PRD 隐含
 - **任务描述**：
   1. 定义数据质量规则（空值率 / 唯一性 / 格式 / 范围）
@@ -524,7 +524,7 @@
 - **依赖**：FDR-001
 - **负责人**：Data Engineer
 
-### FDR-006：数据目录（Data Catalog）
+### FDR-006：数据目录（Data Catalog）⬜ 未开始
 - **需求来源**：PRD 隐含
 - **任务描述**：
   1. 数据源注册与管理
@@ -538,7 +538,7 @@
 
 ## 模块 INF：基础设施与集成
 
-### INF-001：PostgreSQL 连接基座升级
+### INF-001：PostgreSQL 连接基座升级 🟡 部分完成（asyncpg + Alembic 基线就绪，多租户连接池隔离待实现）
 - **任务描述**：
   1. 确认 `asyncpg` 已加入 `requirements.txt`
   2. 补充 Alembic 迁移基线
@@ -550,7 +550,7 @@
 - **依赖**：无
 - **负责人**：Backend Dev A
 
-### INF-002：Redis 集成加固
+### INF-002：Redis 集成加固 🟡 部分完成（redis_client.py 已创建，Rate Limiting + Session + 降级策略待完善）
 - **任务描述**：
   1. 确认 Redis 已在 docker-compose 中启用
   2. 后端集成 `redis-py` 用于：
@@ -564,7 +564,7 @@
 - **依赖**：无
 - **负责人**：Backend Dev A
 
-### INF-003：Milvus 向量数据库部署
+### INF-003：Milvus 向量数据库部署 ✅ 已完成（docker-compose 服务栈 + MilvusClient 封装 + Collection Schema 就绪）
 - **任务描述**：
   1. Docker Compose 添加 `milvus` + `etcd` + `minio`（Milvus 专用）
   2. 创建 Collection Schema（`tenant_id` + `embedding` + `metadata`）
@@ -576,7 +576,7 @@
 - **依赖**：无
 - **负责人**：Backend Dev C / MLOps
 
-### INF-004：CI/CD 流水线更新
+### INF-004：CI/CD 流水线更新 ⬜ 未开始
 - **任务描述**：
   1. GitHub Actions 添加：
      - SAST 扫描（bandit + semgrep）
@@ -655,16 +655,16 @@ Week 15-16:
 
 ## 关键里程碑
 
-| 里程碑 | 日期 | 交付物 | 验收方式 |
-|:-------|:-----|:-------|:---------|
-| M1：模型就绪 | Week 2 | Ontology 全部表 + Alembic 迁移 | `pytest` 通过 |
-| M2：API 就绪 | Week 4 | Object/Link/Interface CRUD API | Postman 集通过 |
-| M3：引擎就绪 | Week 6 | Compiler + Action Executor | 100 Object 编译 < 30s |
-| M4：搜索就绪 | Week 8 | Semantic Search + LLM Gateway | 混合检索 P99 < 500ms |
-| M5：前端就绪 | Week 10 | Object View + Workshop Builder | E2E 测试通过 |
-| M6：智能就绪 | Week 12 | RAG + Agent + Guardrails | 演示通过 |
-| M7：数据就绪 | Week 14 | CDC + Lineage | 端到端延迟 < 5s |
-| M8：发布就绪 | Week 16 | v2.0 Release | 集成测试 + 文档齐全 |
+| 里程碑 | 日期 | 交付物 | 验收方式 | 当前状态 |
+|:-------|:-----|:-------|:---------|:---------|
+| M1：模型就绪 | Week 2 | Ontology 全部表 + Alembic 迁移 | `pytest` 通过 | ✅ 已完成 |
+| M2：API 就绪 | Week 4 | Object/Link/Interface CRUD API | Postman 集通过 | 🟡 进行中 |
+| M3：引擎就绪 | Week 6 | Compiler + Action Executor | 100 Object 编译 < 30s | 🟡 进行中 |
+| M4：搜索就绪 | Week 8 | Semantic Search + LLM Gateway | 混合检索 P99 < 500ms | 🟡 进行中 |
+| M5：前端就绪 | Week 10 | Object View + Workshop Builder | E2E 测试通过 | 🟡 进行中 |
+| M6：智能就绪 | Week 12 | RAG + Agent + Guardrails | 演示通过 | ⬜ 未开始 |
+| M7：数据就绪 | Week 14 | CDC + Lineage | 端到端延迟 < 5s | ⬜ 未开始 |
+| M8：发布就绪 | Week 16 | v2.0 Release | 集成测试 + 文档齐全 | ⬜ 未开始 |
 
 ---
 
