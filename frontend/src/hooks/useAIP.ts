@@ -136,7 +136,7 @@ export function useRAGQuery() {
   const { token } = useAuth()
   return useMutation({
     mutationFn: async (request: RAGQueryRequest) => {
-      const response = await fetch(`${API_BASE_URL}/aip/rag`, {
+      const response = await fetch(`${API_BASE_URL}/aip/rag/query`, {
         method: 'POST',
         headers: getAuthHeaders(token),
         body: JSON.stringify(request),

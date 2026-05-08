@@ -91,13 +91,30 @@
 - `python -m py_compile backend/tests/test_ontology_integration.py` ✅ 通过
 - `git push origin main` ✅ 已推送
 
+### Iteration 2026-05-08（今日提交）
+
+**目标**：修复联调 BUG + 补齐开发基础设施
+
+#### 已完成任务
+- [x] **FE-FIX-03**：修复 RAG API 路径不匹配（`/aip/rag` → `/aip/rag/query`）
+- [x] **OPS-01**：新建 `docker-compose.light.yml`（仅 postgres + neo4j + redis + backend + frontend）
+- [x] **AIP-FEAT-01**：Chat 对话历史 localStorage 持久化（zustand persist middleware）
+- [x] **FE-FIX-04**：Chat.tsx `clearMessages` → `startNewChat` 修复（与 store 接口对齐）
+- [x] **OPS-04**：新建 `scripts/demo-seed.py`（Customer/Order/Product + 对象实例 + 关系数据）
+- [x] **TEST-03**：补充 `test_ontology_crud.py`（20+ 用例覆盖 Schema 序列化、CRUD Flow、SafeExprEvaluator）
+
+#### 验证结果
+- `npm run build` ✅ 通过
+- `npx tsc --noEmit` ✅ 通过
+- `python -m py_compile`（全部新文件）✅ 通过
+- `git push origin main` ✅ 已推送
+
 ### 下一迭代重点（Week 2 剩余）
-- [ ] **FE-FEAT-05**：Chat.tsx SSE 流式对话联调（对接后端 /aip/chat/stream）
-- [ ] **FE-FEAT-06**：RAGSearch.tsx 接入真实 RAG 查询
-- [ ] **AIP-FEAT-01**：对话历史持久化（本地存储 + 后端 session API）
-- [ ] **BE-FEAT-05**：编写 pytest 集成测试（≥ 15 条用例通过）
-- [ ] **OPS-01**：提供 docker-compose.light.yml（无 Milvus 轻量版）
-- [ ] **OPS-04**：编写 scripts/demo-seed.py 一键生成演示数据
+- [ ] **FE-FEAT-05**：Chat.tsx SSE 流式对话端到端验证
+- [ ] **FE-FEAT-06**：RAGSearch.tsx 接入真实 RAG 查询端到端验证
+- [ ] **BE-FEAT-05**：pytest 在 CI 环境中运行（需安装 pytest + asyncpg mock）
+- [ ] **APP-002**：PropertyTable 组件动态渲染 + 编辑模式完善
+- [ ] **APP-003**：RelatedObjects 组件分组展示与跳转
 
 ---
 

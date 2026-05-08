@@ -12,7 +12,7 @@ const MODELS = [
 ]
 
 export default function Chat() {
-  const { messages, addMessage, currentModel, setCurrentModel, temperature, setTemperature, streamMode, setStreamMode, clearMessages } = useAIPStore()
+  const { messages, addMessage, currentModel, setCurrentModel, temperature, setTemperature, streamMode, setStreamMode, startNewChat } = useAIPStore()
   const { streamChat, isStreaming, abort } = useStreamChat()
   const { mutateAsync: chatAsync } = useChat()
   const [input, setInput] = useState('')
@@ -110,7 +110,7 @@ export default function Chat() {
       <div className="w-64 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700">
           <button
-            onClick={clearMessages}
+            onClick={startNewChat}
             className="w-full px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
           >
             + 新对话
