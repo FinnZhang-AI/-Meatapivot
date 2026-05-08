@@ -83,10 +83,12 @@
 - [x] **FE-FEAT-10**：InterfaceList 新增新建/编辑/删除 + 属性/关系要求配置
 - [x] **FE-FEAT-11**：LinkTypeList 新增新建/编辑/删除 + 基数与对象类型选择器
 - [x] **CR-FIX-01**：代码审查修复验证（db.commit、tenant隔离、Milvus连接复用、tsconfig严格检查）
+- [x] **TEST-02**：补充 backend/tests/test_ontology_integration.py（≥ 15 条用例：SafeExprEvaluator、路由覆盖、Schema序列化、Health端点）
 
 #### 验证结果
 - `npm run build` ✅ 通过（前端生产构建成功）
 - `npx tsc --noEmit` ✅ 通过（无 TypeScript 类型错误）
+- `python -m py_compile backend/tests/test_ontology_integration.py` ✅ 通过
 - `git push origin main` ✅ 已推送
 
 ### 下一迭代重点（Week 2 剩余）
