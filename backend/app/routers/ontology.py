@@ -27,6 +27,7 @@ from app.models.ontology_schemas import (
     ObjectTypeListResponse,
     CompileResult,
     OntologyObjectCreate,
+    OntologyObjectUpdate,
     OntologyObjectResponse,
     LinkTypeCreate,
     LinkTypeUpdate,
@@ -378,6 +379,93 @@ async def get_object(
     )
     type_name = type_result.scalar() or ""
     return _obj_resp(obj, type_name)
+
+
+@router.put("/objects/{object_id}", response_model=OntologyObjectResponse)
+async def update_object(
+    object_id: UUID,
+    data: OntologyObjectUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an object instance (properties, key, status)."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyObject).where(
+            OntologyObject.id == object_id,
+            OntologyObject.tenant_id == tenant_id,
+        )
+    )
+    obj = result.scalar_one_or_none()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Object not found")
+
+    if data.object_key is not None:
+        obj.object_key = data.object_key
+    if data.properties is not None:
+        obj.properties = data.properties
+    if data.status is not None:
+        obj.status = data.status
+    await db.flush()
+
+    # Sync to Neo4j if properties changed
+    if data.properties is not None and obj.neo4j_node_id:
+        try:
+            cypher = """
+            MATCH (n)
+            WHERE elementId(n) = $neo4j_node_id
+            SET n += $props
+            """
+            props = {"object_id": str(obj.id), "object_key": obj.object_key, "tenant_id": str(tenant_id)}
+            props.update({k: v for k, v in (obj.properties or {}).items() if v is not None})
+            await neo4j_client.execute_query(cypher, {
+                "neo4j_node_id": obj.neo4j_node_id,
+                "props": props,
+            })
+        except Exception as e:
+            logger.warning(f"Neo4j sync failed for object update {obj.id}: {e}")
+
+    await db.refresh(obj)
+    type_result = await db.execute(
+        select(OntologyObjectType.name).where(OntologyObjectType.id == obj.object_type_id)
+    )
+    type_name = type_result.scalar() or ""
+    return _obj_resp(obj, type_name)
+
+
+@router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_link(
+    link_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a link instance (hard delete from PG + Neo4j)."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyLink).where(
+            OntologyLink.id == link_id,
+            OntologyLink.tenant_id == tenant_id,
+        )
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+
+    # Delete from Neo4j
+    if link.neo4j_rel_id:
+        try:
+            cypher = """
+            MATCH ()-[r]->()
+            WHERE elementId(r) = $rel_id
+            DELETE r
+            """
+            await neo4j_client.execute_query(cypher, {"rel_id": link.neo4j_rel_id})
+        except Exception as e:
+            logger.warning(f"Neo4j delete failed for link {link.id}: {e}")
+
+    await db.delete(link)
+    await db.flush()
+    return None
 
 
 @router.get("/objects/{object_id}/links", response_model=list[OntologyLinkResponse])

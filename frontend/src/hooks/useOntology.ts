@@ -315,6 +315,80 @@ export function useExecuteAction() {
   })
 }
 
+export function useUpdateObject() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      objectId,
+      properties,
+    }: {
+      objectId: string
+      properties: Record<string, any>
+    }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/objects/${objectId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ properties }),
+      })
+      return handleResponse<OntologyObject>(response)
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['object', data.id] })
+      queryClient.invalidateQueries({ queryKey: ['objects'] })
+    },
+  })
+}
+
+export function useCreateLink() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      linkTypeId,
+      sourceObjectId,
+      targetObjectId,
+      properties,
+    }: {
+      linkTypeId: string
+      sourceObjectId: string
+      targetObjectId: string
+      properties?: Record<string, any>
+    }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/link-types/${linkTypeId}/links`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ source_object_id: sourceObjectId, target_object_id: targetObjectId, properties }),
+      })
+      return handleResponse<OntologyLink>(response)
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['objectLinks', variables.sourceObjectId] })
+      queryClient.invalidateQueries({ queryKey: ['objectLinks', variables.targetObjectId] })
+    },
+  })
+}
+
+export function useDeleteLink() {
+  const { token } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ linkId, objectId: _objectId }: { linkId: string; objectId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/ontology/links/${linkId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['objectLinks', variables.objectId] })
+    },
+  })
+}
+
 export function useSubgraph(objectId: string) {
   const { token } = useAuth()
   return useQuery<SubgraphResponse>({

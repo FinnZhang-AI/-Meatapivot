@@ -6,26 +6,31 @@ import {
   useActionTypes,
   useSubgraph,
   useExecuteAction,
+  useUpdateObject,
+  useDeleteLink,
 } from '../../hooks/useOntology'
 import { useAuth } from '../../hooks/useAuth'
 import PropertyTable from '../../components/ontology/PropertyTable'
 import OntologyGraph from '../../components/ontology/OntologyGraph'
 import RelatedObjects from '../../components/ontology/RelatedObjects'
-import type { GraphNode, OntologyLink } from '../../types/ontology'
+import ActionDialog from '../../components/ontology/ActionDialog'
+import type { GraphNode, OntologyLink, ActionType } from '../../types/ontology'
 
 export default function ObjectView() {
   const { type, id } = useParams<{ type: string; id: string }>()
   const { user } = useAuth()
   const tenantId = user?.tenant_id || ''
 
-  const { data: obj, isLoading: objLoading } = useObject(id || '')
+  const { data: obj, isLoading: objLoading, refetch: refetchObject } = useObject(id || '')
   const { data: links, isLoading: linksLoading } = useObjectLinks(id || '')
   const { data: actionTypes } = useActionTypes(tenantId)
   const { data: subgraph, isLoading: graphLoading } = useSubgraph(id || '')
   const executeAction = useExecuteAction()
+  const updateObject = useUpdateObject()
+  const deleteLink = useDeleteLink()
 
   const [showGraph, setShowGraph] = useState(true)
-  const [activeAction, setActiveAction] = useState<string | null>(null)
+  const [dialogAction, setDialogAction] = useState<ActionType | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const objectTypeName = type || obj?.objectTypeName || 'Unknown'
@@ -42,19 +47,43 @@ export default function ObjectView() {
     }
   }
 
-  const handleExecuteAction = async (actionId: string) => {
+  const handlePropertyChange = async (properties: Record<string, any>) => {
     if (!id) return
-    setActiveAction(actionId)
+    try {
+      await updateObject.mutateAsync({ objectId: id, properties })
+      setActionMessage({ type: 'success', text: '属性已保存' })
+    } catch (e: any) {
+      setActionMessage({ type: 'error', text: `保存失败: ${e.message}` })
+    } finally {
+      setTimeout(() => setActionMessage(null), 3000)
+    }
+  }
+
+  const handleActionClick = (action: ActionType) => {
+    setDialogAction(action)
+  }
+
+  const handleActionExecute = async (params: Record<string, any>) => {
+    if (!id || !dialogAction) return
     try {
       await executeAction.mutateAsync({
-        actionTypeId: actionId,
+        actionTypeId: dialogAction.id,
         targetObjectId: id,
+        parameters: params,
       })
-      setActionMessage({ type: 'success', text: '动作执行成功' })
+      setActionMessage({ type: 'success', text: `${dialogAction.displayName || dialogAction.name} 执行成功` })
+      refetchObject()
     } catch (e: any) {
-      setActionMessage({ type: 'error', text: `执行失败: ${e.message}` })
-    } finally {
-      setActiveAction(null)
+      throw e
+    }
+  }
+
+  const handleDeleteLink = async (linkId: string) => {
+    if (!id) return
+    try {
+      await deleteLink.mutateAsync({ linkId, objectId: id })
+    } catch (e: any) {
+      setActionMessage({ type: 'error', text: `删除关系失败: ${e.message}` })
       setTimeout(() => setActionMessage(null), 3000)
     }
   }
@@ -67,7 +96,6 @@ export default function ObjectView() {
     return <div className="p-6 text-red-500">对象不存在或已被删除</div>
   }
 
-  // Build RelatedObjects-compatible links from objectLinks + subgraph edges
   const enrichedLinks: OntologyLink[] = (links || []).map((l) => ({
     ...l,
     targetObjectKey:
@@ -127,7 +155,7 @@ export default function ObjectView() {
             <PropertyTable
               properties={obj.properties || {}}
               editable={true}
-              onChange={(props) => console.log('Updated props:', props)}
+              onChange={handlePropertyChange}
             />
           </div>
 
@@ -180,7 +208,12 @@ export default function ObjectView() {
             {linksLoading ? (
               <div className="text-slate-400 py-4 text-center">加载中...</div>
             ) : (
-              <RelatedObjects objectId={id || ''} links={enrichedLinks} />
+              <RelatedObjects
+                objectId={id || ''}
+                links={enrichedLinks}
+                onDeleteLink={handleDeleteLink}
+                isDeleting={deleteLink.isPending}
+              />
             )}
           </div>
 
@@ -194,9 +227,8 @@ export default function ObjectView() {
                 relatedActions.map((action) => (
                   <button
                     key={action.id}
-                    disabled={activeAction === action.id}
-                    onClick={() => handleExecuteAction(action.id)}
-                    className="w-full px-4 py-2 text-left text-sm bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                    onClick={() => handleActionClick(action)}
+                    className="w-full px-4 py-2 text-left text-sm bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   >
                     <span className="font-medium">
                       {action.displayName || action.name}
@@ -211,6 +243,16 @@ export default function ObjectView() {
           </div>
         </div>
       </div>
+
+      {/* Action Dialog */}
+      {dialogAction && (
+        <ActionDialog
+          action={dialogAction}
+          open={!!dialogAction}
+          onClose={() => setDialogAction(null)}
+          onExecute={handleActionExecute}
+        />
+      )}
     </div>
   )
 }

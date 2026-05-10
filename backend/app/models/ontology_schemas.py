@@ -112,6 +112,12 @@ class OntologyObjectCreate(BaseModel):
     properties: Dict[str, Any] = Field(default_factory=dict)
 
 
+class OntologyObjectUpdate(BaseModel):
+    object_key: Optional[str] = Field(None, min_length=1, max_length=255)
+    properties: Optional[Dict[str, Any]] = None
+    status: Optional[str] = Field(None, pattern=r'^(active|archived|draft)$')
+
+
 class OntologyObjectResponse(BaseModel):
     id: UUID
     tenant_id: UUID

@@ -22,12 +22,12 @@
 | 模块 | 任务数 | 总工时 | 优先级 | 完成数 | 进度 |
 |:-----|:-------|:-------|:-------|:-------|:-----|
 | INF：基础设施与集成 | 4 | 24h | P1 | 2 | 50% |
-| ONT：Ontology 语义层 Backend | 12 | 80h | P1 | 6 | 50% |
-| AIP：AIP 智能层 Backend | 10 | 72h | P1 | 2 | 20% |
-| APP-F：Apps 应用层 Frontend | 8 | 64h | P2 | 5 | 63% |
+| ONT：Ontology 语义层 Backend | 12 | 80h | P1 | 8 | 67% |
+| AIP：AIP 智能层 Backend | 10 | 72h | P1 | 3 | 30% |
+| APP-F：Apps 应用层 Frontend | 8 | 64h | P2 | 6 | 75% |
 | FDR：Foundry 数据层 | 6 | 48h | P3 | 0 | 0% |
 
-**整体进度：~30%（Iteration 2026-05-07 更新）**
+**整体进度：~40%（Iteration 2026-05-08-b 更新）**
 
 ---
 
@@ -39,8 +39,8 @@
 | M2：API 就绪 | Week 4 | 🟡 进行中 | Object/Link/Interface/Action/Function CRUD 已完成；待补充测试覆盖 |
 | M3：引擎就绪 | Week 6 | 🟡 进行中 | Compiler + Action Executor 骨架完成；待性能验证 + 沙箱执行 |
 | M4：搜索就绪 | Week 8 | 🟡 进行中 | Milvus 部署配置完成，向量搜索已接入；待端到端验证 + RRF 重排 |
-| M5：前端就绪 | Week 10 | 🟡 进行中 | ObjectTypeList / ObjectTypeDetail / ObjectView MVP 完成；Ontology CRUD 全页面交互完成 |
-| M6：智能就绪 | Week 12 | 未开始 | 依赖 M4 + M5 |
+| M5：前端就绪 | Week 10 | ✅ 基本完成 | ObjectTypeList/Detail/LinkType/Interface/ActionType/Function 全部CRUD + ObjectView(属性保存/ActionDialog/删除关系) + Chat(SSE) + RAGSearch 已完成 |
+| M6：智能就绪 | Week 12 | 🟡 部分完成 | LLM Gateway 就绪，RAG 管道就绪，Agent 占位符 |
 | M7：数据就绪 | Week 14 | 未开始 | 依赖 M6 |
 | M8：发布就绪 | Week 16 | 未开始 | 全量集成测试 |
 
@@ -113,8 +113,24 @@
 - [ ] **FE-FEAT-05**：Chat.tsx SSE 流式对话端到端验证
 - [ ] **FE-FEAT-06**：RAGSearch.tsx 接入真实 RAG 查询端到端验证
 - [ ] **BE-FEAT-05**：pytest 在 CI 环境中运行（需安装 pytest + asyncpg mock）
-- [ ] **APP-002**：PropertyTable 组件动态渲染 + 编辑模式完善
-- [ ] **APP-003**：RelatedObjects 组件分组展示与跳转
+- [ ] **OPS-01**：Docker 部署，后端全栈启动验证
+
+### Iteration 2026-05-08-b（本次会话）
+
+**目标**：修复 P0 缺陷 + LLM 连接测试 + 前端组件完善
+
+#### 已完成任务
+- [x] **P0-FIX-01**：PropertyTable 编辑保存接入 API（useUpdateObject hook + ObjectView 真实 API 调用）
+- [x] **P0-FIX-02**：Action 参数表单（ActionDialog 组件，动态表单生成）
+- [x] **P0-FIX-03**：RelatedObjects 删除关系（useDeleteLink hook + UI 删除按钮）
+- [x] **P0-FIX-04**：补充 useUpdateObject / useCreateLink / useDeleteLink hooks
+- [x] **INF-FIX-01**：修复 config.py pydantic-settings v2 兼容性（extra=ignore + field_validator）
+- [x] **LLM-TEST-01**：LLM Gateway 代码完整性测试通过（导入/模型路由/fallback 全验证）
+
+#### 验证结果
+- LLM Gateway 代码：✅ 全部通过（Config 加载、Gateway 实例化、模型解析、Fallback 模型）
+- 服务连通性：⚠️ 需 Docker + ONE_API_KEY
+- Python 3.14.3 环境：httpx + pydantic + sqlalchemy 可用
 
 ---
 
@@ -137,6 +153,7 @@
 | Backend Dev | Phase A + BE-FEAT-04 | ~10h |
 | Frontend Dev A | Phase B + Phase C（ObjectView 等） | ~12h |
 | DevOps | docker-compose Milvus 配置 | ~2h |
+| AI Agent | P0 BUG 修复 + LLM 测试 + 组件完善 | ~4h |
 
 ---
 
@@ -146,7 +163,8 @@
 |:-----|:-----|:---------|
 | 2026-05-06 | v2.0-plan-20260506 | 初始进度报告，基于 TASKS.md 生成，所有任务标记为未开始 |
 | 2026-05-06 | v2.0-iter-20260506 | 完成 Iteration 2026-05-06：后端联调修复 + 前端 Object View MVP，前端构建通过 |
-| 2026-05-07 | v2.0-iter-20260507 | 完成 Iteration 2026-05-07：补全 Ontology 全部 5 个管理页面的 CRUD Modal；代码审查修复全部验证通过；推送至 origin/main |
+| 2026-05-07 | v2.0-iter-20260507 | 完成 Iteration 2026-05-07：补全 Ontology 全部 5 个管理页面的 CRUD Modal；代码审查修复全部验证通过 |
+| 2026-05-08-b | v2.0-iter-20260508b | P0 BUG 修复(PropertyTable保存+ActionDialog+RelatedObjects删除) + LLM Gateway完整性测试通过 + pydantic-settings兼容修复 + 进度更新至~40% |
 
 ---
 

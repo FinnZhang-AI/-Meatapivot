@@ -1,9 +1,12 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List, Optional
 import os
 
 
 class Settings(BaseSettings):
+    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
+    
     # Application
     APP_NAME: str = "Meatapivot"
     APP_VERSION: str = "1.0.0"
@@ -93,10 +96,20 @@ class Settings(BaseSettings):
     # File Upload
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".docx", ".txt", ".md", ".csv", ".xlsx", ".jpg", ".png"]
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def parse_allowed_extensions(cls, v):
+        if isinstance(v, str):
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
 
 
 settings = Settings()
