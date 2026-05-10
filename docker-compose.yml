@@ -225,6 +225,20 @@ services:
       timeout: 20s
       retries: 3
 
+  # One API - LLM Gateway (multi-model proxy)
+  one-api:
+    image: songquanpeng/one-api:latest
+    container_name: meatapivot-one-api
+    ports:
+      - "3005:3000"
+    volumes:
+      - one_api_data:/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
   # Frontend (Vite + React)
   frontend:
     build:
@@ -378,6 +392,7 @@ volumes:
   etcd_data:
   minio_milvus_data:
   milvus_data:
+  one_api_data:
 
 networks:
   meatapivot-network:

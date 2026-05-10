@@ -195,6 +195,48 @@ export interface GraphMetadata {
   objectTypes: string[]
 }
 
+export interface SearchResultItem {
+  objectId: string
+  objectType: string
+  objectKey: string
+  label: string
+  score: number
+  source: string
+  explanation?: string
+  propertiesPreview: Record<string, any>
+}
+
+export interface SearchResponse {
+  query: string
+  results: SearchResultItem[]
+  total: number
+  vectorHits: number
+  graphHits: number
+  reranked: boolean
+  durationMs: number
+}
+
+export interface RecentAction {
+  id: string
+  actionName: string
+  targetObjectKey: string
+  status: string
+  executedBy?: string
+  executedAt?: string
+  durationMs?: number
+}
+
+export interface DashboardStats {
+  objectTypeCount: number
+  objectInstanceCount: number
+  linkTypeCount: number
+  interfaceCount: number
+  actionTypeCount: number
+  functionCount: number
+  actionExecutionCount: number
+  recentActions: RecentAction[]
+}
+
 export interface SubgraphResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]

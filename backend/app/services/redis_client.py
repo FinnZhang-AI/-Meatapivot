@@ -71,5 +71,21 @@ class RedisClient:
         else:
             await self.set_flow_execution(tenant_id, execution_id, data)
 
+    async def get(self, key: str) -> Optional[str]:
+        """Generic key-value get (used by LLM Gateway rate limiter)."""
+        if self.connected and self.client:
+            return await self.client.get(key)
+        return self._fallback.get(key)
+
+    async def set(self, key: str, value: str, expire: int = 0) -> None:
+        """Generic key-value set with optional TTL (used by LLM Gateway rate limiter)."""
+        if self.connected and self.client:
+            if expire > 0:
+                await self.client.setex(key, expire, value)
+            else:
+                await self.client.set(key, value)
+        else:
+            self._fallback[key] = value
+
 
 redis_client = RedisClient()

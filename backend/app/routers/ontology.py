@@ -19,6 +19,7 @@ from app.models.ontology_models import (
     OntologyFunctionVersion,
     OntologyObject,
     OntologyLink,
+    ActionExecutionLog,
 )
 from app.models.ontology_schemas import (
     ObjectTypeCreate,
@@ -55,6 +56,8 @@ from app.models.ontology_schemas import (
     FunctionListResponse,
     OntologySearchRequest,
     OntologySearchResponse,
+    DashboardStats,
+    RecentAction,
 )
 from app.services.database import get_db
 from app.services.neo4j_client import neo4j_client
@@ -1287,6 +1290,120 @@ async def test_function(
         parameters={},
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Stats
+# ---------------------------------------------------------------------------
+
+@router.get("/stats", response_model=DashboardStats)
+async def get_dashboard_stats(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return ontology dashboard statistics."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+
+    object_type_count = await db.scalar(
+        select(func.count()).select_from(OntologyObjectType).where(
+            OntologyObjectType.tenant_id == tenant_id,
+            OntologyObjectType.status != "archived",
+        )
+    )
+
+    object_instance_count = await db.scalar(
+        select(func.count()).select_from(OntologyObject).where(
+            OntologyObject.tenant_id == tenant_id,
+            OntologyObject.status != "archived",
+        )
+    )
+
+    link_type_count = await db.scalar(
+        select(func.count()).select_from(OntologyLinkType).where(
+            OntologyLinkType.tenant_id == tenant_id,
+            OntologyLinkType.status != "archived",
+        )
+    )
+
+    interface_count = await db.scalar(
+        select(func.count()).select_from(OntologyInterface).where(
+            OntologyInterface.tenant_id == tenant_id,
+            OntologyInterface.status != "archived",
+        )
+    )
+
+    action_type_count = await db.scalar(
+        select(func.count()).select_from(OntologyActionType).where(
+            OntologyActionType.tenant_id == tenant_id,
+            OntologyActionType.status != "archived",
+        )
+    )
+
+    function_count = await db.scalar(
+        select(func.count()).select_from(OntologyFunction).where(
+            OntologyFunction.tenant_id == tenant_id,
+            OntologyFunction.status != "archived",
+        )
+    )
+
+    action_execution_count = await db.scalar(
+        select(func.count()).select_from(ActionExecutionLog).where(
+            ActionExecutionLog.tenant_id == tenant_id,
+        )
+    )
+
+    recent_logs_result = await db.execute(
+        select(ActionExecutionLog)
+        .where(ActionExecutionLog.tenant_id == tenant_id)
+        .order_by(ActionExecutionLog.executed_at.desc())
+        .limit(5)
+    )
+    recent_logs = recent_logs_result.scalars().all()
+
+    # Fetch action type names and object keys for recent logs
+    action_type_ids = {log.action_type_id for log in recent_logs if log.action_type_id}
+    object_ids = {log.target_object_id for log in recent_logs if log.target_object_id}
+
+    action_names = {}
+    if action_type_ids:
+        at_result = await db.execute(
+            select(OntologyActionType.id, OntologyActionType.name).where(
+                OntologyActionType.id.in_(action_type_ids)
+            )
+        )
+        action_names = {row[0]: row[1] for row in at_result.all()}
+
+    object_keys = {}
+    if object_ids:
+        obj_result = await db.execute(
+            select(OntologyObject.id, OntologyObject.object_key).where(
+                OntologyObject.id.in_(object_ids)
+            )
+        )
+        object_keys = {row[0]: row[1] for row in obj_result.all()}
+
+    recent_actions = [
+        RecentAction(
+            id=log.id,
+            action_name=action_names.get(log.action_type_id, "Unknown"),
+            target_object_key=object_keys.get(log.target_object_id, "Unknown"),
+            status=log.status,
+            executed_at=log.executed_at,
+            duration_ms=log.duration_ms,
+        )
+        for log in recent_logs
+    ]
+
+    return DashboardStats(
+        object_type_count=object_type_count or 0,
+        object_instance_count=object_instance_count or 0,
+        link_type_count=link_type_count or 0,
+        interface_count=interface_count or 0,
+        action_type_count=action_type_count or 0,
+        function_count=function_count or 0,
+        action_execution_count=action_execution_count or 0,
+        recent_actions=recent_actions,
+    )
 
 
 # ---------------------------------------------------------------------------

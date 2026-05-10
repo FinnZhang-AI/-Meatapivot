@@ -482,6 +482,27 @@ class OntologyImportResult(BaseModel):
     errors: List[ImportError]
 
 
+class RecentAction(BaseModel):
+    id: UUID
+    action_name: str
+    target_object_key: str
+    status: str
+    executed_by: Optional[str] = None
+    executed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+
+
+class DashboardStats(BaseModel):
+    object_type_count: int
+    object_instance_count: int
+    link_type_count: int
+    interface_count: int
+    action_type_count: int
+    function_count: int
+    action_execution_count: int
+    recent_actions: List[RecentAction]
+
+
 class ValueTypeCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     display_name: Optional[str] = Field(None, max_length=255)

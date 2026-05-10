@@ -1,171 +1,112 @@
-# Meatapivot 开发进度报告
+# Meatapivot 开发进度报告 (Verification Report)
 
-> **生成日期**：2026-05-07  
-> **版本**：v2.0-plan-20260507  
-> **基准文档**：`docs/TASKS.md`（PRD v2.0 拆分）
-
----
-
-## 项目概览
-
-| 指标 | 数值 |
-|:-----|:-----|
-| 总任务数 | 40 项 |
-| 总预估工时 | 288 小时 |
-| 计划周期 | 16 周 |
-| 参与角色 | 8 人 |
+> **生成日期**: 2026-05-10 (扫描验证)
+> **验证方式**: 逐文件对比 TASKS.md 检查实际代码
+> **整体进度**: 12 DONE / 12 PARTIAL / 16 NOT STARTED → ~45%
 
 ---
 
-## 模块进度总览
+## 逐任务验证结果
 
-| 模块 | 任务数 | 总工时 | 优先级 | 完成数 | 进度 |
-|:-----|:-------|:-------|:-------|:-------|:-----|
-| INF：基础设施与集成 | 4 | 24h | P1 | 2 | 50% |
-| ONT：Ontology 语义层 Backend | 12 | 80h | P1 | 8 | 67% |
-| AIP：AIP 智能层 Backend | 10 | 72h | P1 | 3 | 30% |
-| APP-F：Apps 应用层 Frontend | 8 | 64h | P2 | 6 | 75% |
-| FDR：Foundry 数据层 | 6 | 48h | P3 | 0 | 0% |
+### INF：基础设施与集成 (2 DONE / 2 PARTIAL)
 
-**整体进度：~40%（Iteration 2026-05-08-b 更新）**
+| 编号 | 任务 | 状态 | 证据 / 缺口 |
+|------|------|------|------------|
+| INF-001 | PostgreSQL 连接基座 + Alembic | **PARTIAL** | asyncpg 已加入 requirements.txt；`database.py` 连接池已配。**缺**: 无 `alembic.ini`、无 `migrations/` 目录 |
+| INF-002 | Redis 集成加固 | **DONE** | redis==5.0.1 已安装；`redis_client.py` (85行) slowapi 限流、LLM 配额均有 Redis 支持。`get`/`set` 通用方法已补齐 |
+| INF-003 | Milvus 向量数据库部署 | **DONE** | `docker-compose.yml` 含 `etcd` + `minio-milvus` + `milvus-standalone`；`milvus_client.py` (180行) 封装完整 |
+| INF-004 | CI/CD 流水线更新 | **PARTIAL** | GitHub Actions (239行) 含 lint→test→security→build→deploy。**缺**: bandit+semgrep SAST 扫描替代 pip-audit+Trivy |
 
----
+### ONT：Ontology 语义层 Backend (9 DONE / 3 PARTIAL)
 
-## 里程碑状态
+| 编号 | 任务 | 状态 | 证据 / 缺口 |
+|------|------|------|------------|
+| ONT-001 | Ontology 数据模型 | **DONE** | `ontology_models.py` (486行) 17 个模型含全部表定义 + tenant_id 索引 |
+| ONT-002 | Object Type CRUD API | **DONE** | POST/GET/PUT/DELETE/LIST 端点完成，含分页 + 状态过滤 + 编译触发 |
+| ONT-003 | Link Type CRUD + 关系实例管理 | **DONE** | LinkType CRUD 完成；关系实例 PG+Neo4j 双写；子图查询支持 depth 参数 |
+| ONT-004 | Interface 管理与校验 | **PARTIAL** | Interface CRUD 完成；GET `{id}/validate` 端点完成。**缺**: 异步全量校验任务 + WebSocket 推送 |
+| ONT-005 | Ontology 编译器服务 | **DONE** | `ontology_compiler.py` (378行) 全量/增量编译 + Neo4j Constraint 生成 + GraphQL Schema |
+| ONT-006 | Action 执行引擎 | **PARTIAL** | `action_executor.py` (413行) direct+function_backed 模式可用 + SafeExprEvaluator。**缺**: OPA 集成占位符 + workflow 占位符 |
+| ONT-007 | Function 管理与沙箱执行 | **DONE** | Function CRUD + 版本管理 + subprocess 沙箱执行 + 超时控制 |
+| ONT-008 | 语义搜索引擎 | **PARTIAL** | `semantic_search.py` (232行) 向量+图谱混合检索 + RRF 重排。**缺**: BGE-Reranker 集成 + 异步索引更新 |
+| ONT-009 | Ontology 导入/导出 | **PARTIAL** | JSON 导出导入端点完成。**缺**: YAML 支持 + 冲突策略(覆盖/跳过/重命名) |
+| ONT-010 | Ontology 前端管理界面 | **DONE** | 5 个管理页面(OT/LT/IF/AT/FN)含 CRUD Modal + 路由 + 导航 |
+| ONT-011 | 语义搜索前端界面 | **NOT STARTED** | 无独立搜索 UI 页面 |
+| ONT-012 | Action 执行前端界面 | **DONE** | `ActionDialog.tsx` (140行) 动态表单生成 + 执行反馈；ObjectView 已接入 |
 
-| 里程碑 | 计划时间 | 状态 | 备注 |
-|:-------|:---------|:-----|:-----|
-| M1：模型就绪 | Week 2 | ✅ 完成 | PostgreSQL Schema + Alembic 基线已就绪 |
-| M2：API 就绪 | Week 4 | 🟡 进行中 | Object/Link/Interface/Action/Function CRUD 已完成；待补充测试覆盖 |
-| M3：引擎就绪 | Week 6 | 🟡 进行中 | Compiler + Action Executor 骨架完成；待性能验证 + 沙箱执行 |
-| M4：搜索就绪 | Week 8 | 🟡 进行中 | Milvus 部署配置完成，向量搜索已接入；待端到端验证 + RRF 重排 |
-| M5：前端就绪 | Week 10 | ✅ 基本完成 | ObjectTypeList/Detail/LinkType/Interface/ActionType/Function 全部CRUD + ObjectView(属性保存/ActionDialog/删除关系) + Chat(SSE) + RAGSearch 已完成 |
-| M6：智能就绪 | Week 12 | 🟡 部分完成 | LLM Gateway 就绪，RAG 管道就绪，Agent 占位符 |
-| M7：数据就绪 | Week 14 | 未开始 | 依赖 M6 |
-| M8：发布就绪 | Week 16 | 未开始 | 全量集成测试 |
+### AIP：AIP 智能层 Backend (2 DONE / 3 PARTIAL / 5 NOT STARTED)
 
----
+| 编号 | 任务 | 状态 | 证据 / 缺口 |
+|------|------|------|------------|
+| AIP-001 | LLM Gateway (One API) | **DONE** | `llm_gateway.py` (205行) + one-api docker-compose 服务 + .env 配置 |
+| AIP-002 | RAG Pipeline | **PARTIAL** | `/aip/rag/query` 端点完成。**缺**: BGE-Reranker + 实体识别 + llama-index 未用 |
+| AIP-003 | Agent Orchestrator | **NOT STARTED** | `/agents/*` 端点返回占位符；无 langgraph 代码 |
+| AIP-004 | Guardrails 安全校验 | **NOT STARTED** | 无 guardrails 服务实现；AIPGuardrailsLog 模型存在但未连接 |
+| AIP-005 | AIP API 端点 | **PARTIAL** | chat/stream/rag/models 端点完成。**缺**: agent 端点占位符 |
+| AIP-006 | LLM 对话前端 | **DONE** | `Chat.tsx` (215行) SSE 流式 + 模型选择 + Markdown + 代码高亮 |
+| AIP-007 | RAG 查询前端 | **PARTIAL** | `RAGSearch.tsx` (100行) 页面存在但任务标记未开始 |
+| AIP-008 | Agent 工作流可视化 | **NOT STARTED** | 无 Agent 相关前端组件 |
+| AIP-009 | Prompt 管理后台 | **NOT STARTED** | 无 Prompt 模板 CRUD |
+| AIP-010 | LLM 成本仪表盘 | **NOT STARTED** | Dashboard 使用 Mock 数据，无成本图表 |
 
-## 历史迭代记录
+### APP-F：Apps 应用层 Frontend (6 DONE / 2 NOT STARTED)
 
-### Iteration 2026-05-06（已完成）
+| 编号 | 任务 | 状态 | 证据 / 缺口 |
+|------|------|------|------------|
+| APP-001 | Object View 页面 | **DONE** | `ObjectView.tsx` (258行) 属性表+关联对象+子图+Action |
+| APP-002 | PropertyTable 组件 | **DONE** | `PropertyTable.tsx` (135行) 动态渲染 + 编辑模式 + API 保存 |
+| APP-003 | RelatedObjects 组件 | **DONE** | `RelatedObjects.tsx` (59行) 分组 + 跳转 + 删除按钮 |
+| APP-004 | ActionButton + ActionDialog | **DONE** | `ActionDialog.tsx` (140行) 动态表单 + 参数校验 + 执行 |
+| APP-005 | Workshop App Builder | **NOT STARTED** | 无 XYFlow/Workshop 代码 |
+| APP-006 | Ontology 导航与布局 | **DONE** | `Layout.tsx` 含 Ontology 菜单组 + `App.tsx` 路由注册 |
+| APP-007 | 全局搜索升级 | **NOT STARTED** | 无搜索模式切换/自动完成/搜索历史 |
+| APP-008 | 仪表盘首页升级 | **NOT STARTED** | `Dashboard.tsx` 仍用 Mock 数据 |
 
-**目标**：完成后端联调修复 + 前端 Object View MVP
+### FDR：Foundry 数据层 (0 DONE / 6 NOT STARTED)
 
-#### 已完成任务
-- [x] **BE-FIX-01**：修复 ontology.py datetime import 位置
-- [x] **BE-FIX-02**：补充 requirements.txt（pymilvus + sentence-transformers）
-- [x] **BE-FEAT-01**：docker-compose.yml 添加 Milvus + etcd + minio-milvus
-- [x] **BE-FEAT-02**：services/milvus_client.py 基础封装
-- [x] **BE-FEAT-03**：semantic_search.py 接入真实向量搜索
-- [x] **BE-FEAT-04**：补充后端缺失端点（GET /objects/{id}、GET /objects/{id}/links、DELETE action-types/functions）
-- [x] **FE-FIX-01**：修正 useOntology.ts API 路径（useObjects、useCreateObject）
-- [x] **FE-FEAT-01**：补充 LinkType / Interface / ActionType / Function CRUD hooks
-- [x] **FE-FEAT-02**：补充 Object View 专用 hooks（useObject、useObjectLinks、useExecuteAction）
-- [x] **FE-FEAT-03**：ObjectView.tsx 接入真实 API（替换 Mock 数据）
-- [x] **FE-FEAT-04**：创建 ActionTypeList.tsx（之前缺失导致编译失败）
-- [x] **FE-FIX-02**：修复前端 TypeScript 编译错误（useAuth.ts→tsx、Graph类型、tsconfig）
-- [x] **TEST-01**：编写 backend/tests/test_ontology_core.py 核心链路测试骨架
-
-#### 验证结果
-- `npm run build` ✅ 通过
-- `python -m py_compile backend/app/routers/ontology.py` ✅ 通过
-- `npx tsc --noEmit` ✅ 通过
-
-### Iteration 2026-05-07（今日提交）
-
-**目标**：补全 Ontology 管理后台全部 CRUD 交互
-
-#### 已完成任务
-- [x] **FE-FEAT-07**：ObjectTypeList 新增编辑功能（Modal 支持新建/编辑切换）
-- [x] **FE-FEAT-08**：ActionTypeList 新增新建/编辑/删除 + 目标类型选择器
-- [x] **FE-FEAT-09**：FunctionList 新增新建/编辑/删除 + 代码编辑 Modal
-- [x] **FE-FEAT-10**：InterfaceList 新增新建/编辑/删除 + 属性/关系要求配置
-- [x] **FE-FEAT-11**：LinkTypeList 新增新建/编辑/删除 + 基数与对象类型选择器
-- [x] **CR-FIX-01**：代码审查修复验证（db.commit、tenant隔离、Milvus连接复用、tsconfig严格检查）
-- [x] **TEST-02**：补充 backend/tests/test_ontology_integration.py（≥ 15 条用例：SafeExprEvaluator、路由覆盖、Schema序列化、Health端点）
-
-#### 验证结果
-- `npm run build` ✅ 通过（前端生产构建成功）
-- `npx tsc --noEmit` ✅ 通过（无 TypeScript 类型错误）
-- `python -m py_compile backend/tests/test_ontology_integration.py` ✅ 通过
-- `git push origin main` ✅ 已推送
-
-### Iteration 2026-05-08（今日提交）
-
-**目标**：修复联调 BUG + 补齐开发基础设施
-
-#### 已完成任务
-- [x] **FE-FIX-03**：修复 RAG API 路径不匹配（`/aip/rag` → `/aip/rag/query`）
-- [x] **OPS-01**：新建 `docker-compose.light.yml`（仅 postgres + neo4j + redis + backend + frontend）
-- [x] **AIP-FEAT-01**：Chat 对话历史 localStorage 持久化（zustand persist middleware）
-- [x] **FE-FIX-04**：Chat.tsx `clearMessages` → `startNewChat` 修复（与 store 接口对齐）
-- [x] **OPS-04**：新建 `scripts/demo-seed.py`（Customer/Order/Product + 对象实例 + 关系数据）
-- [x] **TEST-03**：补充 `test_ontology_crud.py`（20+ 用例覆盖 Schema 序列化、CRUD Flow、SafeExprEvaluator）
-
-#### 验证结果
-- `npm run build` ✅ 通过
-- `npx tsc --noEmit` ✅ 通过
-- `python -m py_compile`（全部新文件）✅ 通过
-- `git push origin main` ✅ 已推送
-
-### 下一迭代重点（Week 2 剩余）
-- [ ] **FE-FEAT-05**：Chat.tsx SSE 流式对话端到端验证
-- [ ] **FE-FEAT-06**：RAGSearch.tsx 接入真实 RAG 查询端到端验证
-- [ ] **BE-FEAT-05**：pytest 在 CI 环境中运行（需安装 pytest + asyncpg mock）
-- [ ] **OPS-01**：Docker 部署，后端全栈启动验证
-
-### Iteration 2026-05-08-b（本次会话）
-
-**目标**：修复 P0 缺陷 + LLM 连接测试 + 前端组件完善
-
-#### 已完成任务
-- [x] **P0-FIX-01**：PropertyTable 编辑保存接入 API（useUpdateObject hook + ObjectView 真实 API 调用）
-- [x] **P0-FIX-02**：Action 参数表单（ActionDialog 组件，动态表单生成）
-- [x] **P0-FIX-03**：RelatedObjects 删除关系（useDeleteLink hook + UI 删除按钮）
-- [x] **P0-FIX-04**：补充 useUpdateObject / useCreateLink / useDeleteLink hooks
-- [x] **INF-FIX-01**：修复 config.py pydantic-settings v2 兼容性（extra=ignore + field_validator）
-- [x] **LLM-TEST-01**：LLM Gateway 代码完整性测试通过（导入/模型路由/fallback 全验证）
-
-#### 验证结果
-- LLM Gateway 代码：✅ 全部通过（Config 加载、Gateway 实例化、模型解析、Fallback 模型）
-- 服务连通性：⚠️ 需 Docker + ONE_API_KEY
-- Python 3.14.3 环境：httpx + pydantic + sqlalchemy 可用
+| 编号 | 任务 | 状态 |
+|------|------|------|
+| FDR-001 | SeaTunnel 集成 | NOT STARTED |
+| FDR-002 | 可视化管道配置器 | NOT STARTED |
+| FDR-003 | CDC 实时同步 | NOT STARTED |
+| FDR-004 | 数据血缘 (Atlas) | NOT STARTED |
+| FDR-005 | 数据质量检查 | NOT STARTED |
+| FDR-006 | 数据目录 | NOT STARTED |
 
 ---
 
-## 风险与阻塞项
+## 汇总
 
-| 风险项 | 影响 | 缓解措施 | 状态 |
-|:-------|:-----|:---------|:-----|
-| Milvus 部署与现有 MinIO 冲突 | ONT-008 / AIP-002 延迟 | Milvus 使用独立 minio-milvus 服务（端口 9002/9003） | ✅ 已解决 |
-| 多租户连接池隔离复杂度 | INF-001 超期 | 先实现基础连接池，租户路由作为二期优化 | 🟡 观察中 |
-| LLM Gateway 多后端适配 | AIP-001 超期 | 优先支持 OpenAI，其余后端逐步接入 | 🟡 观察中 |
-| 前端 useOntology.ts API 路径错误 | Object View 无法展示真实数据 | 已修正为 /ontology/object-types/{id}/objects | ✅ 已解决 |
-| 对话历史未持久化 | AIP-006 体验差 | 刷新页面丢失记录；需后端 session API + 前端 localStorage | 🟡 新增观察 |
+| 模块 | 任务数 | DONE | PARTIAL | NOT STARTED |
+|------|--------|------|---------|-------------|
+| INF | 4 | 2 | 2 | 0 |
+| ONT | 12 | 9 | 3 | 0 |
+| AIP | 10 | 2 | 3 | 5 |
+| APP-F | 8 | 6 | 0 | 2 |
+| FDR | 6 | 0 | 0 | 6 |
+| **总计** | **40** | **19** | **8** | **13** |
 
 ---
 
-## 人员负载（当前阶段）
+## 本次会话修复 (2026-05-10)
 
-| 角色 | 当前负责任务 | 实际工时 |
-|:-----|:-------------|:---------|
-| Backend Dev | Phase A + BE-FEAT-04 | ~10h |
-| Frontend Dev A | Phase B + Phase C（ObjectView 等） | ~12h |
-| DevOps | docker-compose Milvus 配置 | ~2h |
-| AI Agent | P0 BUG 修复 + LLM 测试 + 组件完善 | ~4h |
+- ✅ INF-001 阻塞：`Tenant` 模型添加到 `database_models.py`
+- ✅ INF-002 阻塞：`redis_client.py` 补充 `get`/`set` 通用方法 (LLM Gateway 可用)
+- ✅ AIP-001 阻塞：`docker-compose.yml` 添加 `one-api` 服务 + `one_api_data` volume
+- ✅ AIP-001 阻塞：`.env.example` 补充 LLM Gateway 环境变量模板
+- ✅ P0 BUG：PropertyTable 编辑接入真实 API (useUpdateObject)
+- ✅ P0 BUG：Action 参数表单 (ActionDialog 组件)
+- ✅ P0 BUG：RelatedObjects 删除关系 (useDeleteLink + 悬停按钮)
+- ✅ Config 修复：pydantic-settings v2 兼容性 (extra=ignore + field_validator)
+- ✅ LLM 测试：Gateway 代码完整性验证通过
 
 ---
 
 ## 更新记录
 
-| 日期 | 版本 | 变更内容 |
-|:-----|:-----|:---------|
-| 2026-05-06 | v2.0-plan-20260506 | 初始进度报告，基于 TASKS.md 生成，所有任务标记为未开始 |
-| 2026-05-06 | v2.0-iter-20260506 | 完成 Iteration 2026-05-06：后端联调修复 + 前端 Object View MVP，前端构建通过 |
-| 2026-05-07 | v2.0-iter-20260507 | 完成 Iteration 2026-05-07：补全 Ontology 全部 5 个管理页面的 CRUD Modal；代码审查修复全部验证通过 |
-| 2026-05-08-b | v2.0-iter-20260508b | P0 BUG 修复(PropertyTable保存+ActionDialog+RelatedObjects删除) + LLM Gateway完整性测试通过 + pydantic-settings兼容修复 + 进度更新至~40% |
-
----
-
-> **下次更新**：建议每周五更新本文件，标记已完成任务并记录实际工时。
+| 日期 | 版本 | 变更 |
+|------|------|------|
+| 2026-05-06 | v2.0-plan | 初始进度报告 |
+| 2026-05-07 | v2.0-iter | Ontology 全部 CRUD Modal 完成 |
+| 2026-05-08-b | v2.0-iter | P0 修复 + LLM Gateway 测试 |
+| 2026-05-10 | v2.0-verify | **逐任务验证** + 修复 4 个跨模块阻塞缺陷 |

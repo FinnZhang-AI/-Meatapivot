@@ -16,6 +16,7 @@ import LinkTypeList from './pages/ontology/LinkTypeList'
 import InterfaceList from './pages/ontology/InterfaceList'
 import ActionTypeList from './pages/ontology/ActionTypeList'
 import FunctionList from './pages/ontology/FunctionList'
+import SemanticSearch from './pages/ontology/SemanticSearch'
 
 // Object View
 import ObjectView from './pages/objects/ObjectView'
@@ -45,6 +46,7 @@ function App() {
           <Route path="ontology/interfaces" element={<InterfaceList />} />
           <Route path="ontology/action-types" element={<ActionTypeList />} />
           <Route path="ontology/functions" element={<FunctionList />} />
+          <Route path="ontology/search" element={<SemanticSearch />} />
 
           {/* Object View */}
           <Route path="objects/:type/:id" element={<ObjectView />} />

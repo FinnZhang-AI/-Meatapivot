@@ -9,6 +9,7 @@ import type {
   ActionType,
   FunctionDef,
   SubgraphResponse,
+  DashboardStats,
 } from '../types/ontology'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
@@ -222,16 +223,7 @@ export function useFunctions(tenantId: string) {
   })
 }
 
-// Search
-export interface SearchResponse {
-  query: string
-  results: OntologyObject[]
-  total: number
-  vector_hits: number
-  graph_hits: number
-  reranked: boolean
-  duration_ms: number
-}
+import type { SearchResponse } from '../types/ontology'
 
 export function useSearch() {
   const { token } = useAuth()
@@ -386,6 +378,22 @@ export function useDeleteLink() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['objectLinks', variables.objectId] })
     },
+  })
+}
+
+export function useDashboardStats(tenantId: string) {
+  const { token } = useAuth()
+  return useQuery<DashboardStats>({
+    queryKey: ['dashboardStats', tenantId],
+    queryFn: async () => {
+      const response = await fetch(
+        `${API_BASE_URL}/ontology/stats?tenant_id=${encodeURIComponent(tenantId)}`,
+        { headers: getAuthHeaders(token) }
+      )
+      return handleResponse<DashboardStats>(response)
+    },
+    enabled: !!tenantId,
+    refetchInterval: 30000,
   })
 }
 
