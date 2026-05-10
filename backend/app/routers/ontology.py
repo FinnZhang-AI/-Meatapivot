@@ -58,6 +58,9 @@ from app.models.ontology_schemas import (
     OntologySearchResponse,
     DashboardStats,
     RecentAction,
+    ImportError,
+    OntologyImportRequest,
+    OntologyImportResult,
 )
 from app.services.database import get_db
 from app.services.neo4j_client import neo4j_client
@@ -1504,43 +1507,121 @@ async def export_ontology(
 
 
 
-@router.post("/import")
+async def _import_entities(
+    db: AsyncSession,
+    tenant_id: UUID,
+    items: List[Dict[str, Any]],
+    model_class,
+    name_field: str,
+    conflict_strategy: str,
+    imported: dict,
+    skipped: list,
+    overwritten: list,
+    renamed: list,
+    errors: list,
+    entity_type: str,
+):
+    """Helper to import entities with conflict resolution."""
+    for item_data in items:
+        name = item_data.get(name_field)
+        if not name:
+            errors.append(ImportError(entity_type=entity_type, entity_name="unknown", error=f"Missing {name_field}"))
+            continue
+
+        # Check existing
+        existing = await db.execute(
+            select(model_class).where(
+                model_class.tenant_id == tenant_id,
+                model_class.name == name,
+            )
+        )
+        existing_obj = existing.scalar_one_or_none()
+
+        if existing_obj:
+            if conflict_strategy == "skip":
+                skipped.append(name)
+                continue
+            elif conflict_strategy == "overwrite":
+                for k, v in item_data.items():
+                    if hasattr(model_class, k) and k not in ("id", "tenant_id", "created_at"):
+                        setattr(existing_obj, k, v)
+                overwritten.append(name)
+                imported[entity_type] += 1
+                continue
+            elif conflict_strategy == "rename":
+                # Find a unique name
+                suffix = 1
+                new_name = f"{name}_imported_{suffix}"
+                while True:
+                    check = await db.execute(
+                        select(model_class).where(
+                            model_class.tenant_id == tenant_id,
+                            model_class.name == new_name,
+                        )
+                    )
+                    if not check.scalar_one_or_none():
+                        break
+                    suffix += 1
+                    new_name = f"{name}_imported_{suffix}"
+                item_data = {**item_data, name_field: new_name}
+                renamed.append(new_name)
+
+        # Create new
+        try:
+            entity = model_class(tenant_id=tenant_id, **{k: v for k, v in item_data.items() if hasattr(model_class, k)})
+            db.add(entity)
+            imported[entity_type] += 1
+        except Exception as e:
+            errors.append(ImportError(entity_type=entity_type, entity_name=name, error=str(e)))
+
+
+@router.post("/import", response_model=OntologyImportResult)
 async def import_ontology(
     request: Request,
-    data: Dict[str, Any],
+    data: OntologyImportRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Import ontology definitions from JSON."""
+    """Import ontology definitions from JSON with conflict resolution."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
     imported = {"object_types": 0, "link_types": 0, "interfaces": 0, "action_types": 0, "functions": 0}
+    skipped: List[str] = []
+    overwritten: List[str] = []
+    renamed: List[str] = []
+    errors: List[ImportError] = []
 
-    for ot_data in data.get("object_types", []):
-        ot = OntologyObjectType(tenant_id=tenant_id, **{k: v for k, v in ot_data.items() if hasattr(OntologyObjectType, k)})
-        db.add(ot)
-        imported["object_types"] += 1
-
-    for lt_data in data.get("link_types", []):
-        lt = OntologyLinkType(tenant_id=tenant_id, **{k: v for k, v in lt_data.items() if hasattr(OntologyLinkType, k)})
-        db.add(lt)
-        imported["link_types"] += 1
-
-    for i_data in data.get("interfaces", []):
-        iface = OntologyInterface(tenant_id=tenant_id, **{k: v for k, v in i_data.items() if hasattr(OntologyInterface, k)})
-        db.add(iface)
-        imported["interfaces"] += 1
-
-    for at_data in data.get("action_types", []):
-        at = OntologyActionType(tenant_id=tenant_id, **{k: v for k, v in at_data.items() if hasattr(OntologyActionType, k)})
-        db.add(at)
-        imported["action_types"] += 1
-
-    for fn_data in data.get("functions", []):
-        fn = OntologyFunction(tenant_id=tenant_id, **{k: v for k, v in fn_data.items() if hasattr(OntologyFunction, k)})
-        db.add(fn)
-        imported["functions"] += 1
+    await _import_entities(
+        db, tenant_id, data.object_types, OntologyObjectType, "name",
+        data.conflict_strategy, imported, skipped, overwritten, renamed, errors, "object_types"
+    )
+    await _import_entities(
+        db, tenant_id, data.link_types, OntologyLinkType, "name",
+        data.conflict_strategy, imported, skipped, overwritten, renamed, errors, "link_types"
+    )
+    await _import_entities(
+        db, tenant_id, data.interfaces, OntologyInterface, "name",
+        data.conflict_strategy, imported, skipped, overwritten, renamed, errors, "interfaces"
+    )
+    await _import_entities(
+        db, tenant_id, data.action_types, OntologyActionType, "name",
+        data.conflict_strategy, imported, skipped, overwritten, renamed, errors, "action_types"
+    )
+    await _import_entities(
+        db, tenant_id, data.functions, OntologyFunction, "name",
+        data.conflict_strategy, imported, skipped, overwritten, renamed, errors, "functions"
+    )
 
     await db.flush()
-    return {"imported": imported}
+    return OntologyImportResult(
+        imported_object_types=imported["object_types"],
+        imported_link_types=imported["link_types"],
+        imported_interfaces=imported["interfaces"],
+        imported_action_types=imported["action_types"],
+        imported_functions=imported["functions"],
+        skipped=len(skipped),
+        overwritten=len(overwritten),
+        renamed=len(renamed),
+        errors=errors,
+    )
 
 
 # ---------------------------------------------------------------------------

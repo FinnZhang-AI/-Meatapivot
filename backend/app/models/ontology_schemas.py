@@ -472,6 +472,15 @@ class ImportError(BaseModel):
     error: str
 
 
+class OntologyImportRequest(BaseModel):
+    object_types: List[Dict[str, Any]] = Field(default_factory=list)
+    link_types: List[Dict[str, Any]] = Field(default_factory=list)
+    interfaces: List[Dict[str, Any]] = Field(default_factory=list)
+    action_types: List[Dict[str, Any]] = Field(default_factory=list)
+    functions: List[Dict[str, Any]] = Field(default_factory=list)
+    conflict_strategy: str = Field(default="skip", pattern=r'^(skip|overwrite|rename)$')
+
+
 class OntologyImportResult(BaseModel):
     imported_object_types: int
     imported_link_types: int
@@ -479,6 +488,8 @@ class OntologyImportResult(BaseModel):
     imported_action_types: int
     imported_functions: int
     skipped: int
+    overwritten: int
+    renamed: int
     errors: List[ImportError]
 
 
