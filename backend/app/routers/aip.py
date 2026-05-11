@@ -28,6 +28,7 @@ from app.models.ontology_models import AIPLLMCall, AIPGuardrailsLog
 from app.services.database import get_db
 from app.services.llm_gateway import llm_gateway
 from app.services.semantic_search import SemanticSearchService
+from app.services.guardrails_service import GuardrailsService
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,26 @@ async def chat(
     data: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Non-streaming chat completion."""
+    """Non-streaming chat completion with guardrails."""
     tenant_id = getattr(request.state, "tenant_id", None)
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
+    last_user_message = messages[-1]["content"] if messages else ""
+
+    # Guardrails input check
+    guardrails = GuardrailsService(db, tenant_id)
+    input_check = guardrails.check_input(last_user_message)
+    if not input_check["passed"]:
+        await guardrails.log_check(
+            model=data.model or settings.DEFAULT_LLM_MODEL,
+            input_text=last_user_message,
+            output_text="",
+            input_result=input_check,
+            output_result={"passed": True, "score": 0, "triggered": [], "check_type": "output"},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input blocked by guardrails: {input_check['triggered']}",
+        )
 
     try:
         result = await llm_gateway.chat(
@@ -59,6 +77,16 @@ async def chat(
         choice = result.get("choices", [{}])[0]
         message_data = choice.get("message", {})
         usage_data = result.get("usage", {})
+            # Guardrails output check
+        output_check = guardrails.check_output(message_data.get("content", ""))
+        await guardrails.log_check(
+            model=result.get("model", data.model or settings.DEFAULT_LLM_MODEL),
+            input_text=last_user_message,
+            output_text=message_data.get("content", ""),
+            input_result=input_check,
+            output_result=output_check,
+        )
+
         return ChatResponse(
             message=ChatMessage(
                 role=message_data.get("role", "assistant"),
@@ -71,6 +99,8 @@ async def chat(
                 "total_tokens": usage_data.get("total_tokens", 0),
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=502, detail=f"LLM gateway error: {e}")
@@ -128,6 +158,22 @@ async def rag_query(
 ):
     """Ontology-aware RAG query."""
     tenant_id = getattr(request.state, "tenant_id", None)
+    guardrails = GuardrailsService(db, tenant_id)
+
+    # Guardrails input check
+    input_check = guardrails.check_input(data.query)
+    if not input_check["passed"]:
+        await guardrails.log_check(
+            model=settings.DEFAULT_LLM_MODEL,
+            input_text=data.query,
+            output_text="",
+            input_result=input_check,
+            output_result={"passed": True, "score": 0, "triggered": [], "check_type": "output"},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input blocked by guardrails: {input_check['triggered']}",
+        )
 
     # Step 1: Retrieve relevant objects via semantic search
     search_service = SemanticSearchService(db, tenant_id)
@@ -173,6 +219,18 @@ async def rag_query(
         )
         answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         model_used = result.get("model", settings.DEFAULT_LLM_MODEL)
+
+        # Guardrails output check
+        output_check = guardrails.check_output(answer)
+        await guardrails.log_check(
+            model=model_used,
+            input_text=data.query,
+            output_text=answer,
+            input_result={"passed": True, "score": 0, "triggered": [], "check_type": "input"},
+            output_result=output_check,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"RAG LLM error: {e}")
         answer = f"Failed to generate answer: {e}"
