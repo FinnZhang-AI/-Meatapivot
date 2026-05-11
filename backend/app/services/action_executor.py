@@ -401,13 +401,63 @@ object_key = context["object_key"]
         target_object_id: UUID,
         parameters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Workflow mode: trigger existing decision flow (placeholder)."""
+        """Workflow mode: simplified sequential step execution."""
         logger.info(
-            f"Workflow execution placeholder: action={action.name}, "
+            f"Workflow execution: action={action.name}, "
             f"workflow_id={action.workflow_id}, object={target_object_id}"
         )
+
+        if not action.workflow_id:
+            raise ValueError("Action has no associated workflow")
+
+        # Fetch target object
+        obj_result = await self.db.execute(
+            select(OntologyObject).where(
+                OntologyObject.id == target_object_id,
+                OntologyObject.tenant_id == self.tenant_id,
+            )
+        )
+        obj = obj_result.scalar_one_or_none()
+
+        # Simple workflow: execute a chain of predefined steps
+        # In production, this should integrate with the decision flow engine
+        context = {
+            "parameters": parameters,
+            "object_id": str(target_object_id),
+            "object_properties": obj.properties if obj else {},
+            "object_key": obj.object_key if obj else None,
+            "workflow_id": str(action.workflow_id),
+        }
+
+        # Placeholder: execute predefined steps from action config
+        steps = action.parameters or []
+        results = []
+        for step in steps:
+            step_name = step.get("name", "unknown")
+            step_type = step.get("type", "noop")
+            if step_type == "set_property":
+                prop = step.get("property")
+                value = parameters.get(prop, step.get("default"))
+                if obj and prop:
+                    obj.properties[prop] = value
+                    results.append({"step": step_name, "type": "set_property", "property": prop, "value": value})
+            elif step_type == "create_link":
+                link_type_id = step.get("link_type_id")
+                target_id = parameters.get("target_object_id")
+                if link_type_id and target_id:
+                    results.append({"step": step_name, "type": "create_link", "link_type_id": link_type_id, "target_id": target_id})
+            elif step_type == "notify":
+                message = step.get("message", "Workflow step executed")
+                results.append({"step": step_name, "type": "notify", "message": message})
+            else:
+                results.append({"step": step_name, "type": step_type, "status": "noop"})
+
+        await self.db.flush()
         return {
             "mode": "workflow",
-            "workflow_id": str(action.workflow_id) if action.workflow_id else None,
-            "status": "triggered",
+            "workflow_id": str(action.workflow_id),
+            "status": "completed",
+            "steps_executed": len(results),
+            "results": results,
+            "context": {k: v for k, v in context.items() if k != "object_properties"},
         }
