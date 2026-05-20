@@ -1,0 +1,430 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: meatapivot-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-knowledge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knowledge123}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knowledge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5.15
+    container_name: meatapivot-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/neo4j123}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
+    volumes:
+      - neo4j_data:/data
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: meatapivot-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: meatapivot-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-admin123}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: meatapivot-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Keycloak Identity Provider
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: meatapivot-keycloak
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: ${POSTGRES_USER:-knowledge}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-knowledge123}
+    command: start-dev
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Milvus Vector Database - etcd
+  etcd:
+    container_name: meatapivot-milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Milvus Vector Database - MinIO
+  minio-milvus:
+    container_name: meatapivot-milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - minio_milvus_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Milvus Vector Database - Standalone
+  milvus-standalone:
+    container_name: meatapivot-milvus-standalone
+    image: milvusdb/milvus:v2.3.6
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio-milvus:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio-milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # One API - LLM Gateway
+  one-api:
+    image: songquanpeng/one-api:latest
+    container_name: meatapivot-one-api
+    ports:
+      - "3005:3000"
+    volumes:
+      - one_api_data:/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Backend API (FastAPI) - Production Build
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: meatapivot-backend:${IMAGE_TAG:-latest}
+    container_name: meatapivot-backend
+    environment:
+      APP_NAME: ${APP_NAME:-Meatapivot}
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-knowledge}:${POSTGRES_PASSWORD:-knowledge123}@postgres:5432/${POSTGRES_DB:-knowledge_db}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4j123}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASS:-admin123}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_PASSWORD:-minioadmin123}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-documents}
+      MINIO_SECURE: "false"
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-knowledge-platform}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-knowledge-client}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_URL: redis://redis:6379/0
+      MILVUS_URI: http://milvus-standalone:19530
+      ONE_API_URL: http://one-api:3000/v1
+      ONE_API_KEY: ${ONE_API_KEY:-sk-your-api-key-here}
+      DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-gpt-4o}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: json
+      ALLOWED_ORIGINS: "http://localhost,http://localhost:3000,http://localhost:5173"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus-standalone:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Frontend (React) - Production Build (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    image: meatapivot-frontend:${IMAGE_TAG:-latest}
+    container_name: meatapivot-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+
+  # Observability Stack
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: meatapivot-prometheus
+    volumes:
+      - ./cicd/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: meatapivot-grafana
+    volumes:
+      - ./cicd/grafana/provisioning:/etc/grafana/provisioning
+      - ./cicd/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  # Loki
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: meatapivot-loki
+    volumes:
+      - ./cicd/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # Promtail
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: meatapivot-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./cicd/loki:/etc/promtail
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    command: -config.file=/etc/promtail/promtail-config.yml
+
+  # Tempo
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: meatapivot-tempo
+    volumes:
+      - ./cicd/tempo-config.yml:/etc/tempo.yaml
+      - tempo_data:/tmp/tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    command: ["-config.file=/etc/tempo.yaml"]
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    container_name: meatapivot-otel-collector
+    volumes:
+      - ./cicd/otel-collector/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4318:4318"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    depends_on:
+      - tempo
+      - loki
+      - prometheus
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+
+  # PostgreSQL Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: meatapivot-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-knowledge}:${POSTGRES_PASSWORD:-knowledge123}@postgres:5432/${POSTGRES_DB:-knowledge_db}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    depends_on:
+      - postgres
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: meatapivot-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    restart: unless-stopped
+    networks:
+      - meatapivot-network
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  rabbitmq_data:
+  minio_data:
+  keycloak_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  tempo_data:
+  etcd_data:
+  minio_milvus_data:
+  milvus_data:
+  one_api_data:
+
+networks:
+  meatapivot-network:
+    driver: bridge

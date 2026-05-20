@@ -234,28 +234,121 @@
 
 ## 5. 技术方案概要
 
-### 5.1 新增服务清单
+### 5.1 架构层次
+
+```
+用户/客户端
+    ↓
+┌─── Nginx API Gateway ───────────────────────┐
+│  限流 & 熔断 / SSL 终止 / 路由分发 / 静态文件 │
+└──────────────────┬───────────────────────────┘
+                   │
+┌─── FastAPI App（无状态，可水平扩展）──────────┐
+│  ┌── Middleware Layer ────────────────────┐  │
+│  │ JWT验证 / 租户注入(tenant_id) / OTel   │  │
+│  └──────────────┬────────────────────────┘  │
+│  ┌── Domain Services ────────────────────┐  │
+│  │ Ontology / KG / Doc / Decision / AIP  │  │
+│  └──────────────┬────────────────────────┘  │
+│  ┌── Infrastructure Adapters ────────────┐  │
+│  │ DB / Neo4j / MinIO / Cache / Milvus   │  │
+│  └───────────────────────────────────────┘  │
+└──────────┬──────────────────────┬───────────┘
+           │                      │
+    ┌──────▼──────┐      ┌───────▼────────┐
+    │  RabbitMQ   │      │  Redis（缓存）  │
+    └──────┬──────┘      └────────────────┘
+    ┌──────▼───────────────────────────────┐
+    │  Celery Worker（异步任务）            │
+    │  文档解析 / 本体编译 / 决策流执行     │
+    └──────────┬───────────────────────────┘
+         ┌─────┴─────┬──────────┐
+         ▼           ▼          ▼
+    PostgreSQL    Neo4j      MinIO
+    （行级租户）  （图实例）  （对象存储）
+```
+
+### 5.2 架构关键决策
+
+#### 5.2.1 API Gateway 层
+
+- 使用 Nginx 作为 API Gateway，FastAPI 不直接暴露给外部
+- 职责：限流、熔断、SSL 终止、路由分发、静态文件服务
+- `docker-compose.deploy.yml` 中 Nginx 反代配置已就绪
+
+#### 5.2.2 异步任务层
+
+- RabbitMQ 作为消息队列，Celery Worker 作为消费者
+- 异步任务类型：文档解析、本体编译、决策流执行、Function-backed Action
+- Phase 1 使用进程级隔离（subprocess + timeout），Phase 2 升级为 Firecracker/gVisor
+
+#### 5.2.3 AI/向量检索层
+
+```
+SemanticSearchService (接口)
+  ├── EmbeddingProvider（BGE-M3 / OpenAI / Ollama）
+  ├── VectorStore（Milvus）
+  ├── GraphStore（Neo4j 邻居扩展）
+  └── RRF Reranker（BGE-Reranker-v2-m3）
+```
+
+- Milvus 作为独立向量库，不与 Neo4j 图向量混用
+- 混合检索：向量（Milvus）+ 图谱（Neo4j）→ RRF 重排
+
+#### 5.2.4 Keycloak 集成策略
+
+- **方案 A（推荐）**：Keycloak 作为唯一身份源，FastAPI 只做 Token 校验（python-keycloak / authlib），废弃自建 JWT 签发
+- **方案 B（当前过渡）**：自有 JWT 为默认模式，Keycloak 为"企业SSO扩展"，两套并行
+
+#### 5.2.5 多租户隔离强制层
+
+```python
+# Middleware 层注入 tenant_id，各 router 无需手动传递
+class TenantMiddleware:
+    async def __call__(self, request, call_next):
+        tenant_id = extract_tenant_from_jwt(request)
+        request.state.tenant_id = tenant_id
+        return await call_next(request)
+```
+
+#### 5.2.6 代码分层架构
+
+```
+routers/ontology/object_types.py  ← HTTP 入参/出参转换
+services/ontology_service.py       ← 业务逻辑
+repositories/ontology_repo.py      ← 数据库操作（SQLAlchemy）
+```
+
+- Router 层：只做 HTTP 请求处理，不含业务逻辑
+- Service 层：业务逻辑、事务管理、跨模块协调
+- Repository 层：数据库 CRUD、查询构建
+
+### 5.3 新增服务清单
 
 | 服务 | 技术选型 | 用途 | 端口 |
 |:-----|:---------|:-----|:-----|
+| API Gateway | Nginx | 限流/SSL/路由/静态文件 | 80/443 |
 | Ontology Compiler | Python (FastAPI) | 本体编译与校验 | 8000（复用后端） |
 | Action Executor | Python + OPA | Action 执行与规则校验 | 8000（复用后端） |
 | Semantic Search | Python + BGE-M3 | Embedding + 混合检索 | 8000（复用后端） |
+| Celery Worker | Python + Celery | 异步任务消费者 | — |
 | LLM Gateway | One API | 多模型统一接入 | 3005 |
-| Vector DB | Milvus v2.4 | 向量存储与检索 | 19530 |
+| Vector DB | Milvus v2.3.6 | 向量存储与检索 | 19530 |
 | Agent Orchestrator | Python + LangGraph | 多 Agent 工作流 | 8000（复用后端） |
 | RAG Engine | LlamaIndex | 本体感知检索 | 8000（复用后端） |
 | Data Integration | SeaTunnel 2.3.8 | 数据管道 | — |
 | CDC | Debezium 2.5 | 实时变更捕获 | — |
 | Data Lineage | Apache Atlas 2.3 | 元数据与血缘 | 21000 |
 
-### 5.2 关键架构决策
+### 5.4 核心架构决策
 
 1. **Ontology 定义存储在 PostgreSQL，实例存储在 Neo4j** —— 定义层需要复杂事务与版本控制，实例层需要图遍历性能。
 2. **Milvus 作为独立向量库，不与 Neo4j 图向量混用** —— Milvus 在十亿级向量检索上有明显优势，Neo4j 仅保留图遍历。
 3. **LLM Gateway 独立部署（One API）** —— 解耦模型管理与业务逻辑，支持热切换模型后端。
 4. **Action 执行采用异步 + Writeback 模式** —— Function-backed Action 可能耗时较长，异步执行避免阻塞 API。
-5. **沙箱使用 Firecracker / gVisor（后期）** —— Phase 1 先用进程级隔离（subprocess + timeout），Phase 2 升级为轻量级 VM 隔离。
+5. **沙箱使用 RestrictedPython（Phase 1）→ Firecracker/gVisor（Phase 2）** —— 进程级隔离先行，后期升级为轻量级 VM。
+6. **所有 Docker 镜像固定版本** —— 禁止使用 `latest` 标签，确保构建可重现。
+7. **Alembic 作为唯一数据库迁移工具** —— 禁止手动执行 DDL，所有 schema 变更通过 `alembic revision --autogenerate`。
 
 ---
 
@@ -335,11 +428,63 @@ POST   /agents/{id}/interrupt    # 中断 Agent
 每条功能需求必须满足以下标准才算完成：
 
 1. **代码**：已提交 PR 并通过 Code Review
-2. **测试**：单元测试覆盖率 ≥ 80%，集成测试覆盖核心链路
+2. **测试**：单元测试覆盖率 ≥ 80%（核心 service 层），集成测试覆盖核心链路
 3. **文档**：API 文档（OpenAPI）已更新，用户操作手册已补充
-4. **部署**：Docker Compose 配置已更新，本地 `scripts/dev-start.sh` 可一键启动
+4. **部署**：Docker Compose 配置已更新，`scripts/deploy-local.sh` 可一键启动
 5. **性能**：满足对应 NFR 指标
 6. **安全**：通过 SAST 扫描（bandit / semgrep），无高危漏洞
+
+### 8.1 功能验收标准（按模块）
+
+| 模块 | 验收项 | 通过标准 |
+|------|--------|----------|
+| **Ontology** | Object Type CRUD | 创建/更新/归档全流程无报错，Neo4j 约束自动生成 |
+| | Interface 验证 | 未实现接口的 Object Type 返回明确的验证错误信息 |
+| | 本体编译 | 全量编译 < 10s（100个类型），增量编译 < 2s |
+| | 语义搜索 | 搜索延迟 P95 < 500ms，返回结果相关性 > 0.6 |
+| **Knowledge Graph** | 子图遍历 | 5 跳以内查询 < 3s（1万节点数据集） |
+| | Cypher 查询 | 非 MATCH/RETURN 语句被拒绝，返回 403 |
+| **Document** | 文件上传 | 支持 PDF/Word/Excel，单文件最大 100MB |
+| | 批量处理 | 10个文件并发上传无超时，任务状态可查询 |
+| **Decision Flow** | 工作流执行 | 异步执行，状态可轮询，执行日志可查 |
+| | 条件节点 | 支持 AND/OR 逻辑，分支执行结果正确 |
+| **多租户** | 数据隔离 | 租户 A 的 token 无法查询租户 B 的任何资源 |
+| **认证** | JWT 过期 | 过期 token 返回 401，刷新 token 有效 |
+
+### 8.2 性能验收标准
+
+| 指标 | 目标值 | 测量方式 |
+|------|--------|----------|
+| API 响应时间（P50） | < 100ms | k6 / locust 压测 |
+| API 响应时间（P95） | < 500ms | — |
+| 并发用户数 | 100 并发无 5xx 错误 | — |
+| 知识图谱查询（1万节点） | < 3s | 专项测试 |
+| 文件上传（10MB PDF） | < 5s | — |
+| 系统可用性 | > 99.5%（月度） | Prometheus 告警 |
+
+### 8.3 安全验收标准
+
+| 检查项 | 验收标准 |
+|--------|----------|
+| 敏感信息泄露 | `.env` 不可通过任何 API 端点读取 |
+| SQL/Cypher 注入 | Cypher endpoint 拒绝写操作语句（白名单校验） |
+| 跨租户访问 | 所有资源查询必须携带 tenant_id 过滤（Middleware 强制） |
+| 默认密码 | 生产部署检查脚本验证所有默认密码已更换 |
+| JWT Secret | 长度 ≥ 32 字符，非默认值 |
+| 依赖漏洞 | `pip audit` / `npm audit` 无 Critical 漏洞 |
+| Function 沙箱 | `os.system` / `subprocess` / `__import__` 等危险调用被拦截 |
+
+### 8.4 工程质量验收标准
+
+| 检查项 | 目标 |
+|--------|------|
+| 后端单元测试覆盖率 | ≥ 70%（核心 service 层） |
+| API 文档完整性 | 所有端点有描述、请求/响应示例 |
+| CI 流水线 | PR 必须通过 lint + test + build + security scan |
+| Docker 构建 | `docker-compose -f docker-compose.deploy.yml up -d` 首次启动 < 5 分钟 |
+| 健康检查 | `/health` 端点返回各依赖服务状态 |
+| 数据库迁移 | `alembic upgrade head` 可成功执行 |
+| 前端测试 | 核心组件有 Vitest/Jest 单元测试 |
 
 ---
 
@@ -383,10 +528,43 @@ POST   /agents/{id}/interrupt    # 中断 Agent
 | LLM API 成本不可控 | 租户超额使用 | 中 | 严格限流 + 预算告警 + 支持本地模型 fallback |
 | Ontology 编译性能差 | 大规模本体编译超时 | 低 | 增量编译 + 异步编译任务 + 缓存 |
 | SeaTunnel 学习曲线陡 | 数据工程师上手慢 | 中 | 提供可视化管道配置器 + 常见模板 |
+| Function 沙箱安全风险 | 恶意代码执行 | 中 | Phase 1: RestrictedPython; Phase 2: Firecracker/gVisor |
+| Cypher 注入 | 数据泄露/破坏 | 低 | 白名单关键字校验 + 参数化查询 |
 
 ---
 
-## 11. 附录
+## 11. 已知问题与修复计划
+
+### P0（立即修复）
+
+| 问题 | 位置 | 修复方案 | 预估工时 |
+|------|------|----------|----------|
+| `.env` 文件被提交到 Git | 仓库根目录 | `git rm --cached .env` + 轮换所有密码 | 0.5天 |
+| Cypher 注入防护不足 | `knowledge_graph.py` | 白名单关键字校验（MATCH/WITH/RETURN/CALL/UNWIND） | 1天 |
+| Function 沙箱使用 `exec()` | `action_executor.py` | 替换为 RestrictedPython 或独立容器 | 2天 |
+
+### P1（本迭代修复）
+
+| 问题 | 位置 | 修复方案 | 预估工时 |
+|------|------|----------|----------|
+| 缺少 Alembic 迁移 | 后端 | `alembic init migrations` + CI 检查 | 1天 |
+| Router 层含业务逻辑 | `routers/ontology/` | 拆分为 Router/Service/Repository 三层 | 5天 |
+| 缺少 Celery Worker | Docker Compose | 添加 worker 服务 + 任务路由 | 3天 |
+| Auth 使用 Mock 数据 | `auth.py` | 实现真实 PostgreSQL 用户存储 | 2天 |
+| Documents 使用 Mock 数据 | `documents.py` | 实现真实 MinIO 上传 | 2天 |
+
+### P2（下迭代修复）
+
+| 问题 | 位置 | 修复方案 | 预估工时 |
+|------|------|----------|----------|
+| MinIO 使用 `latest` 镜像 | `docker-compose.yml` | 固定为 `RELEASE.2024-01-16T16-07-38Z` | 0.5天 |
+| 缺少 CI 安全扫描 | `.github/workflows/` | 添加 bandit + semgrep + Trivy | 1天 |
+| 前端缺少测试 | `frontend/` | 添加 Vitest + React Testing Library | 3天 |
+| Dashboard 使用 Mock 数据 | `Dashboard.tsx` | 接入真实统计 API | 1天 |
+
+---
+
+## 12. 附录
 
 ### 11.1 术语表
 

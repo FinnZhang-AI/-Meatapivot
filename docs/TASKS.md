@@ -8,11 +8,149 @@
 
 | 模块编号 | 模块名称 | 任务数 | 总估工时 | 优先级 | 已完成 | 进度 |
 |:---------|:---------|:-------|:---------|:-------|:-------|:-----|
-| ONT | Ontology 语义层 Backend | 12 | 80h | P1 | 2 项 + 7 项部分 | ~50% |
+| FIX | 架构审查修复（P0/P1） | 8 | 56h | **P0/P1** | 0 项 | 0% |
+| ONT | Ontology 语义层 Backend | 12 | 80h | P1 | 2 项 + 7 项部分 | ~75% |
 | AIP | AIP 智能层 Backend | 10 | 72h | P1 | 0 项 + 3 项部分 | ~20% |
 | APP-F | Apps 应用层 Frontend | 8 | 64h | P2 | 2 项 + 2 项部分 | ~63% |
 | FDR | Foundry 数据层 | 6 | 48h | P3 | 0 项 | 0% |
-| INF | 基础设施与集成 | 4 | 24h | P1 | 1 项 + 2 项部分 | ~50% |
+| INF | 基础设施与集成 | 6 | 40h | P1 | 1 项 + 2 项部分 | ~50% |
+
+---
+
+## 模块 FIX：架构审查修复（P0/P1）
+
+> 基于代码审查报告（`Meatapivot架构完善与验收标准.md`）中发现的高优先级问题，必须在 Phase 1 结束前完成。
+
+### FIX-001：移除 .env 并轮换密码 🔴 P0
+- **问题**：`.env` 文件被提交到 Git，含明文密码
+- **任务描述**：
+  1. `git rm --cached .env`
+  2. 确认 `.gitignore` 包含 `.env`
+  3. 轮换所有已暴露的密码（PostgreSQL, Neo4j, Redis, MinIO, JWT Secret）
+  4. 提交修复 commit
+- **验收标准**：
+  - `git ls-files | grep '.env'` 返回空
+  - `.gitignore` 包含 `.env` 和 `.env.*`
+  - 所有服务使用新密码可正常连接
+- **预估工时**：4h
+- **依赖**：无
+- **负责人**：DevOps
+
+### FIX-002：加固 Cypher 注入防护 🔴 P0
+- **问题**：Cypher 查询端点仅靠注释说明"read-only"，无代码层面强制
+- **任务描述**：
+  1. 实现白名单关键字校验：
+     ```python
+     ALLOWED_CYPHER_STARTS = {"MATCH", "WITH", "RETURN", "CALL", "UNWIND"}
+     ```
+  2. 拒绝包含 `CREATE`, `MERGE`, `DELETE`, `SET`, `REMOVE`, `DROP` 的查询
+  3. 所有 Cypher 查询必须使用参数化（`$param`）
+  4. 添加单元测试覆盖注入攻击场景
+- **验收标准**：
+  - `CREATE (n:Test)` 被拒绝，返回 403
+  - `MATCH (n) RETURN n` 正常执行
+  - 参数化查询测试通过（无字符串拼接）
+- **预估工时**：8h
+- **依赖**：无
+- **负责人**：Backend Dev B
+
+### FIX-003：审查并加固 Function 沙箱 🔴 P0
+- **问题**：Function 执行可能使用 `exec()`，存在严重安全风险
+- **任务描述**：
+  1. 审查 `action_executor.py` 中 Function 执行逻辑
+  2. Phase 1：替换为 `RestrictedPython`（进程级隔离）
+     - 拦截 `os.system`, `subprocess`, `__import__`, `open`, `eval`
+     - 限制执行时间（30s）和内存（256MB）
+  3. 添加恶意代码测试用例（`rm -rf`, `os.system`, 网络请求等）
+  4. Phase 2（后续）：升级为 Firecracker/gVisor 容器隔离
+- **验收标准**：
+  - `os.system('rm -rf /')` 被拦截
+  - `import subprocess` 被拦截
+  - 超时函数（`while True`）在 30s 后被终止
+  - 内存超限函数被终止
+- **预估工时**：16h
+- **依赖**：ONT-006
+- **负责人**：Backend Dev B
+
+### FIX-004：添加 Alembic 数据库迁移 🟡 P1
+- **问题**：项目使用 `docker/postgres/init.sql` 初始化，无 Alembic 迁移
+- **任务描述**：
+  1. `alembic init migrations`
+  2. 配置 `alembic.ini` 和 `env.py`
+  3. `alembic revision --autogenerate -m "initial schema"`
+  4. 在 CI 中加入 `alembic upgrade head` 检查
+  5. 更新 `docker-compose.yml` 启动时自动执行迁移
+- **验收标准**：
+  - `alembic upgrade head` 成功执行
+  - `alembic downgrade base` 可回滚
+  - CI 流水线包含迁移检查
+- **预估工时**：8h
+- **依赖**：INF-001
+- **负责人**：Backend Dev A
+
+### FIX-005：Router/Service/Repository 三层分离 🟡 P1
+- **问题**：Router 层直接包含业务逻辑和数据库操作
+- **任务描述**：
+  1. 创建 `services/ontology_service.py`（业务逻辑）
+  2. 创建 `repositories/ontology_repo.py`（数据库操作）
+  3. 重构 `routers/ontology/object_types.py`（仅 HTTP 层）
+  4. 同步重构 `link_types.py`, `interfaces.py`, `actions.py`
+  5. 更新单元测试
+- **验收标准**：
+  - Router 文件不含 SQLAlchemy 查询
+  - Service 层可独立测试（Mock Repository）
+  - 所有现有 API 测试通过
+- **预估工时**：40h
+- **依赖**：ONT-001, ONT-002
+- **负责人**：Backend Dev A + Backend Dev B
+
+### FIX-006：补充 Celery Worker 异步任务服务 🟡 P1
+- **问题**：RabbitMQ 存在但无独立 Worker 服务
+- **任务描述**：
+  1. 安装 `celery[redis]`
+  2. 创建 `backend/app/worker.py`（Celery app）
+  3. 定义任务：文档解析、本体编译、决策流执行
+  4. `docker-compose.yml` 添加 worker 服务
+  5. API 端点改为异步触发 + 状态轮询
+- **验收标准**：
+  - Worker 服务可从 RabbitMQ 消费任务
+  - 任务状态可查询（PENDING/STARTED/SUCCESS/FAILURE）
+  - 任务失败可重试（最多 3 次）
+- **预估工时**：24h
+- **依赖**：INF-002（Redis）
+- **负责人**：Backend Dev B
+
+### FIX-007：实现真实 Auth 用户存储 🟡 P1
+- **问题**：`auth.py` 返回 Mock 用户，无真实 PostgreSQL 存储
+- **任务描述**：
+  1. 实现用户注册（密码 bcrypt 加密）
+  2. 实现用户登录（JWT 签发）
+  3. 实现 Token 刷新
+  4. 实现用户信息查询（`/me`）
+  5. 添加单元测试
+- **验收标准**：
+  - 注册后用户存入 PostgreSQL
+  - 登录返回有效 JWT
+  - 过期 Token 返回 401
+  - 密码以 bcrypt 存储（不可逆）
+- **预估工时**：16h
+- **依赖**：INF-001
+- **负责人**：Backend Dev A
+
+### FIX-008：固定所有 Docker 镜像版本 🟡 P1
+- **问题**：MinIO 使用 `latest` 标签，构建不可重现
+- **任务描述**：
+  1. 审查所有 `docker-compose*.yml` 中的镜像版本
+  2. 固定 MinIO 为 `RELEASE.2024-01-16T16-07-38Z`
+  3. 固定 One API 为具体版本
+  4. 固定所有 `*-alpine` 镜像的具体版本
+  5. 更新 `.env.deploy` 中的版本说明
+- **验收标准**：
+  - `grep -r 'latest' docker-compose*.yml` 返回空
+  - 所有镜像版本可重现构建
+- **预估工时**：4h
+- **依赖**：无
+- **负责人**：DevOps
 
 ---
 
@@ -595,15 +733,18 @@
 ## 任务依赖图
 
 ```
+Week 0 (P0 Fixes - Immediate):
+  FIX-001, FIX-002, FIX-003
+
 Week 1-2:
-  INF-001, INF-002, INF-003  →  ONT-001
+  FIX-004, FIX-008, INF-001, INF-002, INF-003  →  ONT-001
 
 Week 3-4:
-  ONT-001  →  ONT-002, ONT-003
+  FIX-005, FIX-007, ONT-001  →  ONT-002, ONT-003
   ONT-002  →  ONT-004
 
 Week 5-6:
-  ONT-003, ONT-004  →  ONT-005
+  FIX-006, ONT-003, ONT-004  →  ONT-005
   ONT-005  →  ONT-006
 
 Week 7-8:
@@ -640,16 +781,16 @@ Week 15-16:
 
 | 角色 | 人数 | 负责模块 | 核心技能 |
 |:-----|:-----|:---------|:---------|
-| Backend Dev A | 1 | ONT-001~004, ONT-009, INF-001~002 | FastAPI, SQLAlchemy, PostgreSQL |
-| Backend Dev B | 1 | ONT-005~006, ONT-010~012 | Neo4j, GraphQL, Asyncio |
+| Backend Dev A | 1 | FIX-004, FIX-005, FIX-007, ONT-001~004, ONT-009, INF-001~002 | FastAPI, SQLAlchemy, PostgreSQL |
+| Backend Dev B | 1 | FIX-002, FIX-003, FIX-005, FIX-006, ONT-005~006, ONT-010~012 | Neo4j, Celery, Security, GraphQL |
 | Backend Dev C | 1 | ONT-007~008, AIP-001~005, INF-003 | LLM, RAG, LangChain, Vector DB |
 | Frontend Dev A | 1 | APP-006~008, AIP-009~010, FDR-002, FDR-006 | React, TypeScript, Dashboard |
 | Frontend Dev B | 1 | APP-001~005, AIP-006~008 | React, Visualization, XYFlow |
 | MLOps / AI | 1 | AIP-002~004, ONT-008 | Embedding, Milvus, LLM Ops |
 | Data Engineer | 1 | FDR-001, FDR-003~006 | SeaTunnel, Debezium, Atlas |
-| DevOps | 1 | INF-004, 全环境维护 | Docker, K8s, CI/CD, Observability |
+| DevOps | 1 | FIX-001, FIX-008, INF-004, 全环境维护 | Docker, K8s, CI/CD, Security |
 
-**总计**：8 人 × 16 周 = 128 人周
+**总计**：8 人 × 16 周 = 128 人周（含 Week 0 安全修复）
 
 ---
 
@@ -657,14 +798,15 @@ Week 15-16:
 
 | 里程碑 | 日期 | 交付物 | 验收方式 | 当前状态 |
 |:-------|:-----|:-------|:---------|:---------|
-| M1：模型就绪 | Week 2 | Ontology 全部表 + Alembic 迁移 | `pytest` 通过 | ✅ 已完成 |
-| M2：API 就绪 | Week 4 | Object/Link/Interface CRUD API | Postman 集通过 | 🟡 进行中 |
-| M3：引擎就绪 | Week 6 | Compiler + Action Executor | 100 Object 编译 < 30s | 🟡 进行中 |
+| M0：安全修复就绪 | Week 0 | FIX-001~003 完成 | 安全扫描通过 | ⬜ 未开始 |
+| M1：模型就绪 | Week 2 | Ontology 全部表 + Alembic 迁移 | `pytest` + `alembic upgrade head` 通过 | ✅ 已完成 |
+| M2：API 就绪 | Week 4 | Object/Link/Interface CRUD API + 三层分离 | Postman 集通过 + 架构 Review | 🟡 进行中 |
+| M3：引擎就绪 | Week 6 | Compiler + Action Executor + Celery Worker | 100 Object 编译 < 30s + Worker 消费任务 | 🟡 进行中 |
 | M4：搜索就绪 | Week 8 | Semantic Search + LLM Gateway | 混合检索 P99 < 500ms | 🟡 进行中 |
 | M5：前端就绪 | Week 10 | Object View + Workshop Builder | E2E 测试通过 | 🟡 进行中 |
 | M6：智能就绪 | Week 12 | RAG + Agent + Guardrails | 演示通过 | ⬜ 未开始 |
 | M7：数据就绪 | Week 14 | CDC + Lineage | 端到端延迟 < 5s | ⬜ 未开始 |
-| M8：发布就绪 | Week 16 | v2.0 Release | 集成测试 + 文档齐全 | ⬜ 未开始 |
+| M8：发布就绪 | Week 16 | v2.0 Release | 集成测试 + 文档齐全 + 验收标准全部通过 | ⬜ 未开始 |
 
 ---
 
