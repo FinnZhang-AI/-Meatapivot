@@ -92,10 +92,12 @@ async def get_document(
 ):
     """Get document metadata by ID from PostgreSQL"""
     try:
+        doc_uuid = uuid.UUID(document_id)
+        user_uuid = uuid.UUID(current_user.id)
         result = await db.execute(
             select(Document).where(
-                Document.id == uuid.UUID(document_id),
-                Document.uploaded_by == uuid.UUID(current_user.id)
+                Document.id == doc_uuid,
+                Document.uploaded_by == user_uuid
             )
         )
         doc = result.scalar_one_or_none()
@@ -134,10 +136,12 @@ async def download_document(
     """Download a document from MinIO"""
     try:
         # Fetch object_name from PostgreSQL
+        doc_uuid = uuid.UUID(document_id)
+        user_uuid = uuid.UUID(current_user.id)
         result = await db.execute(
             select(Document).where(
-                Document.id == uuid.UUID(document_id),
-                Document.uploaded_by == uuid.UUID(current_user.id)
+                Document.id == doc_uuid,
+                Document.uploaded_by == user_uuid
             )
         )
         doc = result.scalar_one_or_none()

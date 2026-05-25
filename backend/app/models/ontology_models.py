@@ -312,7 +312,7 @@ class OntologyCurrentVersion(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
     version = Column(String(20), nullable=False)
     log_id = Column(UUID(as_uuid=True), ForeignKey("ontology_compile_logs.id"))
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         {"schema": None},

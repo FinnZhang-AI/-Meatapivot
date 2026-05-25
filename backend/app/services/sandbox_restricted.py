@@ -13,15 +13,15 @@ import json
 import logging
 from typing import Any
 
-from RestrictedPython import compile_restricted, safe_globals
+from RestrictedPython import compile_restricted, safe_builtins
 from RestrictedPython.Guards import safe_iter_unpack_sequence, guarded_getattr, full_write_guard
 
 logger = logging.getLogger(__name__)
 
 # Allowed built-in functions for sandboxed code
+# Using safe_builtins from RestrictedPython as base, then adding math/data ops
 ALLOWED_BUILTINS = {
-    # Safe builtins from RestrictedPython
-    **safe_globals.get("__builtins__", {}),
+    **safe_builtins,
     # Math and data structure operations
     "len": len,
     "range": range,
