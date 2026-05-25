@@ -116,11 +116,24 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
         )
     
     # Create new user with hashed password
+    # Use provided tenant_id or default tenant
+    from uuid import UUID
+    tenant_uuid = None
+    if user_data.tenant_id:
+        try:
+            tenant_uuid = UUID(user_data.tenant_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid tenant_id format: {user_data.tenant_id}"
+            )
+    
     db_user = User(
         id=uuid.uuid4(),
         username=user_data.username,
         email=user_data.email,
         hashed_password=get_password_hash(user_data.password),
+        tenant_id=tenant_uuid,
         role=user_data.roles[0] if user_data.roles else "user",
         is_active=True,
     )
@@ -161,7 +174,7 @@ async def login(
         data={
             "sub": user.username,
             "roles": [user.role],
-            "tenant_id": "tenant-default",  # TODO: per-tenant support
+            "tenant_id": str(user.tenant_id) if user.tenant_id else "tenant-default",
         },
         expires_delta=access_token_expires
     )

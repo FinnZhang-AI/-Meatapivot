@@ -45,7 +45,7 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
-    tenant_id: str
+    tenant_id: Optional[str] = None
     roles: List[str] = ["user"]
 
 
