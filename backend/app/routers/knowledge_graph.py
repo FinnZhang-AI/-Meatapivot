@@ -285,19 +285,56 @@ async def delete_relationship(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Cypher write-operation keywords that are forbidden in read-only endpoint
-_CYPHER_WRITE_KEYWORDS = {"CREATE", "SET", "DELETE", "DETACH", "REMOVE", "MERGE", "DROP", "LOAD"}
+# Cypher whitelist: only these starting keywords are allowed in read-only endpoint
+# This prevents ALL write operations, including those hidden in subqueries or comments
+_CYPHER_ALLOWED_STARTS = {"MATCH", "WITH", "RETURN", "CALL", "UNWIND", "OPTIONAL"}
+
+# Dangerous keywords that indicate write operations anywhere in the query
+_CYPHER_FORBIDDEN_KEYWORDS = {"CREATE", "SET", "DELETE", "DETACH", "REMOVE", "MERGE", "DROP", "LOAD"}
 
 
-def _validate_readonly_cypher(query: str) -> bool:
-    """Validate that a Cypher query contains no write operations."""
-    upper_query = query.upper()
-    for keyword in _CYPHER_WRITE_KEYWORDS:
-        # Simple heuristic: keyword preceded by whitespace or start of string
-        # and followed by whitespace or end of string/parenthesis
-        if re.search(rf"(^|\s){keyword}(\s|$|\(|\))", upper_query):
-            return False
-    return True
+def _validate_readonly_cypher(query: str) -> tuple[bool, str]:
+    """
+    Validate Cypher query using whitelist + blacklist approach.
+    
+    Whitelist: query MUST start with one of the allowed keywords.
+    Blacklist: query MUST NOT contain any forbidden write-operation keywords.
+    
+    Returns (is_valid, error_message).
+    """
+    # Normalize: remove leading whitespace and comments (single-line comments after //)
+    lines = query.strip().split('\n')
+    cleaned_lines = []
+    for line in lines:
+        # Remove single-line comments (// style)
+        if '//' in line:
+            line = line[:line.index('//')]
+        cleaned_lines.append(line)
+    cleaned = ' '.join(cleaned_lines).strip()
+    
+    if not cleaned:
+        return False, "Empty query"
+    
+    upper_cleaned = cleaned.upper()
+    
+    # Check 1: Must start with allowed keyword (whitelist)
+    first_word = upper_cleaned.split()[0] if upper_cleaned.split() else ""
+    # Handle OPTIONAL MATCH → first meaningful keyword is MATCH
+    if first_word == "OPTIONAL":
+        words = upper_cleaned.split()
+        first_word = words[1] if len(words) > 1 else ""
+    
+    if first_word not in _CYPHER_ALLOWED_STARTS:
+        return False, f"Query must start with one of: {', '.join(_CYPHER_ALLOWED_STARTS)}. Got: '{first_word}'"
+    
+    # Check 2: Must NOT contain forbidden keywords (blacklist as secondary defense)
+    # We split on word boundaries to avoid false positives in property names
+    words = re.findall(r'\b[A-Z]+\b', upper_cleaned)
+    for keyword in _CYPHER_FORBIDDEN_KEYWORDS:
+        if keyword in words:
+            return False, f"Forbidden write operation detected: '{keyword}'. Only read operations are allowed."
+    
+    return True, ""
 
 
 @router.post("/query", response_model=GraphQueryResponse)
@@ -306,10 +343,11 @@ async def query_graph(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """Execute a custom read-only Cypher query on the knowledge graph"""
-    if not _validate_readonly_cypher(query_request.cypher_query):
+    is_valid, error_msg = _validate_readonly_cypher(query_request.cypher_query)
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Write operations (CREATE/SET/DELETE/MERGE etc.) are not allowed via this endpoint."
+            detail=f"Invalid Cypher query: {error_msg}"
         )
     
     try:

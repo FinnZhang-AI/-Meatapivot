@@ -278,23 +278,43 @@ class OntologyCompileLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid_module.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    version = Column(String(20), nullable=False)              # e.g. "1.3.0"
+    parent_version = Column(String(20))                        # for rollback chain
     compile_type = Column(String(20), nullable=False)
-    target_object_type_id = Column(UUID(as_uuid=True), ForeignKey("ontology_object_types.id", ondelete="SET NULL"))
-    status = Column(String(20), nullable=False)
+    affected_types = Column(JSONB, default=list)               # UUID[] of affected ObjectType IDs
+    diff_snapshot = Column(JSONB, nullable=False, default=dict) # schema diff for rollback
+    neo4j_stmts = Column(JSONB, default=list)                  # executed Cypher statements
+    status = Column(String(20), nullable=False, default="pending")
     errors = Column(JSONB, default=list)
     warnings = Column(JSONB, default=list)
     graphql_schema_snapshot = Column(Text)
     neo4j_constraints_snapshot = Column(JSONB, default=list)
+    error_detail = Column(Text)
     started_at = Column(DateTime(timezone=True), server_default="NOW()")
     completed_at = Column(DateTime(timezone=True))
     duration_ms = Column(Integer)
     executed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    rolled_back_at = Column(DateTime(timezone=True))
+    rolled_back_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     __table_args__ = (
         Index("idx_compile_logs_tenant", "tenant_id"),
         Index("idx_compile_logs_status", "status"),
         CheckConstraint("compile_type IN ('full','incremental')", name="chk_compile_type"),
-        CheckConstraint("status IN ('running','success','failed')", name="chk_compile_status"),
+        CheckConstraint("status IN ('pending','running','success','failed','rolled_back')", name="chk_compile_status"),
+        {"schema": None},
+    )
+
+
+class OntologyCurrentVersion(Base):
+    __tablename__ = "ontology_current_version"
+
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    version = Column(String(20), nullable=False)
+    log_id = Column(UUID(as_uuid=True), ForeignKey("ontology_compile_logs.id"))
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+
+    __table_args__ = (
         {"schema": None},
     )
 

@@ -6,8 +6,12 @@ from datetime import datetime
 import json
 import io
 
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.models.schemas import DocumentResponse, DocumentMetadata
+from app.models.database_models import Document
 from app.services.storage import storage_service
 from app.services.database import get_db
 from app.routers.auth import get_current_user, UserResponse
@@ -83,27 +87,39 @@ async def upload_document(
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Get document metadata by ID"""
-    # In production, fetch from PostgreSQL
-    # For demo, return mock data
+    """Get document metadata by ID from PostgreSQL"""
     try:
-        return DocumentResponse(
-            id=document_id,
-            title="Sample Document",
-            filename="sample.pdf",
-            object_name=f"{current_user.tenant_id}/{document_id}/sample.pdf",
-            document_type="report",
-            description="This is a sample document",
-            file_size=1024000,
-            mime_type="application/pdf",
-            tags=["sample", "demo"],
-            uploaded_by="admin",
-            tenant_id=current_user.tenant_id,
-            uploaded_at=datetime.utcnow().isoformat(),
-            url=f"{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET_NAME}/{current_user.tenant_id}/{document_id}/sample.pdf"
+        result = await db.execute(
+            select(Document).where(
+                Document.id == uuid.UUID(document_id),
+                Document.uploaded_by == uuid.UUID(current_user.id)
+            )
         )
+        doc = result.scalar_one_or_none()
+        
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return DocumentResponse(
+            id=str(doc.id),
+            title=doc.original_name,
+            filename=doc.filename,
+            object_name=doc.object_key,
+            document_type=doc.mime_type or "unknown",
+            description="",
+            file_size=doc.file_size,
+            mime_type=doc.mime_type or "application/octet-stream",
+            tags=[],
+            uploaded_by=current_user.username,
+            tenant_id=current_user.tenant_id,
+            uploaded_at=doc.created_at.isoformat() if doc.created_at else datetime.utcnow().isoformat(),
+            url=f"{settings.MINIO_ENDPOINT}/{doc.bucket_name}/{doc.object_key}"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -112,21 +128,33 @@ async def get_document(
 @router.get("/{document_id}/download")
 async def download_document(
     document_id: str,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Download a document from MinIO"""
     try:
-        # In production, fetch object_name from PostgreSQL
-        object_name = f"{current_user.tenant_id}/{document_id}/sample.pdf"
+        # Fetch object_name from PostgreSQL
+        result = await db.execute(
+            select(Document).where(
+                Document.id == uuid.UUID(document_id),
+                Document.uploaded_by == uuid.UUID(current_user.id)
+            )
+        )
+        doc = result.scalar_one_or_none()
+        
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
         
         # Get presigned URL for download
         presigned_url = await storage_service.get_presigned_url(
-            bucket_name=settings.MINIO_BUCKET_NAME,
-            object_name=object_name,
+            bucket_name=doc.bucket_name,
+            object_name=doc.object_key,
             expires=3600  # 1 hour
         )
         
         return {"download_url": presigned_url, "expires_in": 3600}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to generate download URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -214,17 +242,50 @@ async def search_documents(
     tags: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Search documents by metadata"""
+    """Search documents by metadata from PostgreSQL"""
     try:
-        # In production, query PostgreSQL with filters
-        # For demo, return mock results
         tag_list = tags.split(",") if tags else []
         
+        # Build query
+        stmt = select(Document).where(
+            Document.uploaded_by == uuid.UUID(current_user.id)
+        )
+        
+        if query:
+            stmt = stmt.where(Document.original_name.ilike(f"%{query}%"))
+        
+        # Count total
+        count_stmt = select(func.count()).select_from(Document).where(
+            Document.uploaded_by == uuid.UUID(current_user.id)
+        )
+        if query:
+            count_stmt = count_stmt.where(Document.original_name.ilike(f"%{query}%"))
+        
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar()
+        
+        # Fetch documents with pagination
+        stmt = stmt.offset(offset).limit(limit).order_by(Document.created_at.desc())
+        result = await db.execute(stmt)
+        docs = result.scalars().all()
+        
         return {
-            "documents": [],
-            "total": 0,
+            "documents": [
+                {
+                    "id": str(doc.id),
+                    "filename": doc.filename,
+                    "original_name": doc.original_name,
+                    "file_size": doc.file_size,
+                    "mime_type": doc.mime_type,
+                    "status": doc.status,
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                }
+                for doc in docs
+            ],
+            "total": total,
             "limit": limit,
             "offset": offset,
             "filters": {

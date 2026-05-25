@@ -39,6 +39,8 @@ sentence-transformers==2.3.1
 llama-index==0.10.0
 guardrails-ai==0.4.0
 presidio-analyzer==2.2.355
+RestrictedPython==7.4
+celery==5.3.6
 
 # Optional heavy dependencies (install with --only-binary :all: on Windows)
 # pandas==2.1.4

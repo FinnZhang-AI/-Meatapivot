@@ -50,13 +50,16 @@ class UserCreate(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: str = "user-default"
-    username: str = "default"
-    email: str = "user@example.com"
-    tenant_id: str = "tenant-default"
-    roles: List[str] = ["user"]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    is_active: bool = True
+    id: str
+    username: str
+    email: str
+    tenant_id: str
+    roles: List[str]
+    created_at: datetime
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
 
 
 # Tenant Schemas
