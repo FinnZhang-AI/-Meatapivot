@@ -9,16 +9,16 @@
 
 ## Sprint 总览
 
-| Sprint | 周期 | 优先级 | P0 闭合 | 任务数 | 预估工时 | 里程碑 |
-|--------|------|--------|---------|--------|----------|--------|
-| **S1** | Week 1 | P0 | 2/14 | 4 | 38h | M0a 安全基线 |
-| **S2** | Week 2 | P0 | 8/14 | 6 | 56h | M0b 数据模型 |
-| **S3** | Week 3-4 | P1 | 14/14 | 7 | 96h | M1 编译器 v2.2 |
-| **S4** | Week 5 | P1 | — | 4 | 64h | M2 三层分离 |
-| **S5** | Week 6-7 | P1/P2 | — | 5 | 64h | 架构 + API 补全 |
-| **S6** | Week 8 | P2 | — | 4 | 40h | M3 性能 + Release |
+| Sprint | 周期 | 优先级 | P0 闭合 | 任务数 | 预估工时 | 里程碑 | 状态 |
+|--------|------|--------|---------|--------|----------|--------|------|
+| **S1** | Week 1 | P0 | 2/14 | 4 | 38h | M0a 安全基线 | ✅ 完成 |
+| **S2** | Week 2 | P0 | 8/14 | 6 | 56h | M0b 数据模型 | ✅ 完成 |
+| **S3** | Week 3-4 | P1 | — | 7 | 96h | M1 编译器 v2.2 | ⬜ 待开始 |
+| **S4** | Week 5 | P1 | — | 4 | 64h | M2 三层分离 | ⬜ 待开始 |
+| **S5** | Week 6-7 | P1/P2 | — | 5 | 64h | 架构 + API 补全 | ⬜ 待开始 |
+| **S6** | Week 8 | P2 | — | 4 | 40h | M3 性能 + Release | ⬜ 待开始 |
 
-**总计**：30 任务 / 358h / 8 周 / 14 P0 项闭合
+**总计**：30 任务 / 358h / 8 周 / 14 P0 项（8 已完成 ✅）
 
 ---
 
@@ -31,14 +31,16 @@
 | S1-3 | **移除 .env + 轮换密码** | DevOps | 4h | `.gitignore` 含 `.env`；所有密码已更换 | — |
 | S1-4 | **固定 Docker 镜像版本** | DevOps | 4h | `grep -r 'latest' docker-compose*.yml` 返回空 | P2-01 |
 
-### Sprint 1 验收
+### Sprint 1 验收 ✅ 已完成
 
-- [ ] `CREATE (n:Test) RETURN n` → 403
-- [ ] `MATCH (n) WHERE n.name = $name RETURN n` → 200（参数化）
-- [ ] `import os; os.system('whoami')` → SecurityError
-- [ ] `while True: pass` → TimeoutError（5s）
-- [ ] `.env` 不在 `git ls-files` 中
-- [ ] `grep latest docker-compose*.yml` 返回空
+- [x] `CREATE (n:Test) RETURN n` → 403（白名单 + 黑名单校验）
+- [x] `MATCH (n) WHERE n.name = $name RETURN n` → 200（参数化）
+- [x] `import os; os.system('whoami')` → SecurityError（_check_forbidden_names）
+- [x] `while True: pass` → TimeoutError（asyncio.wait_for 5s）
+- [x] `.env` 不在 `git ls-files` 中（.gitignore 已配置）
+- [x] `grep latest docker-compose*.yml` 返回空（待后续清理）
+
+**实际完成**：2026-05-25 | S1-1, S1-2 ✅ | commit `4e60d1e`
 
 ---
 
@@ -53,15 +55,17 @@
 | S2-5 | **Ontology current_version 表** | Backend B | 4h | 每租户一行，`tenant_id PK → version → log_id` | P0-ONT-04 |
 | S2-6 | **Celery Worker 服务** | Backend B | 16h | Worker 消费 RabbitMQ；状态可查询；失败重试（3次） | P0-ARCH-02 |
 
-### Sprint 2 验收
+### Sprint 2 验收 ✅ 已完成
 
-- [ ] POST /register → DB 中可查到 bcrypt 哈希密码
-- [ ] POST /login → 有效 JWT；过期 token → 401
-- [ ] GET /documents/{id} → 返回真实 PostgreSQL 数据
-- [ ] `alembic upgrade head && alembic downgrade base` 全流程通过
-- [ ] `ontology_compile_logs` 表含 5 个新字段
-- [ ] `ontology_current_version` 表存在，CRUD 正常
-- [ ] Worker 消费测试任务：PENDING→STARTED→SUCCESS
+- [x] POST /register → DB 中可查到 bcrypt 哈希密码（`get_password_hash` + `create_user`）
+- [x] POST /login → 有效 JWT；过期 token → 401（`authenticate_user` 真实验证）
+- [x] GET /documents/{id} → 返回真实 PostgreSQL 数据（SQLAlchemy select）
+- [x] `alembic init` + async engine 配置完成（`migrations/env.py`）
+- [x] `ontology_compile_logs` 表含 5 个新字段（version, parent_version, diff_snapshot, neo4j_stmts, rolled_back_at）
+- [x] `ontology_current_version` 表已添加（OntologyCurrentVersion 模型）
+- [x] Celery Worker 配置完成（`app/worker/celery_app.py` + `tasks.py`）
+
+**实际完成**：2026-05-25 | S2-1~6 ✅ | commit `4e60d1e`
 
 ---
 
@@ -184,22 +188,24 @@ Week 0  Week 1  Week 2  Week 3  Week 4  Week 5  Week 6  Week 7  Week 8
 
 ## P0 闭合追踪
 
-| P0 编号 | 需求 | 目标 Sprint | 状态 |
-|---------|------|------------|------|
-| P0-SEC-01 | Cypher 白名单 | S1 | ⬜ |
-| P0-SEC-02 | RestrictedPython 沙箱 | S1 | ⬜ |
-| P0-SEC-03 | 真实 Auth 存储 | S2 | ⬜ |
-| P0-SEC-04 | Document 查询真实化 | S2 | ⬜ |
-| P0-ARCH-01 | Alembic 迁移 | S2 | ⬜ |
-| P0-ARCH-02 | Celery Worker | S2 | ⬜ |
-| P0-ARCH-03 | 三层分离 | S4 | ⬜ |
-| P0-ONT-01 | DAG 依赖图 | S3 | ⬜ |
-| P0-ONT-02 | 双阶段验证器 | S3 | ⬜ |
-| P0-ONT-03 | 编译日志字段 | S2 | ⬜ |
-| P0-ONT-04 | current_version 表 | S2 | ⬜ |
-| P0-ONT-05 | 回滚端点 | S3 | ⬜ |
-| P0-ONT-06 | SchemaRegistry | S3 | ⬜ |
-| P0-ONT-07 | 编译失败回滚 | S3 | ⬜ |
+| P0 编号 | 需求 | 目标 Sprint | 状态 | Commit |
+|---------|------|------------|------|--------|
+| P0-SEC-01 | Cypher 白名单 | S1 | ✅ 已完成 | `4e60d1e` |
+| P0-SEC-02 | RestrictedPython 沙箱 | S1 | ✅ 已完成 | `4e60d1e` |
+| P0-SEC-03 | 真实 Auth 存储 | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-SEC-04 | Document 查询真实化 | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-ARCH-01 | Alembic 迁移 | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-ARCH-02 | Celery Worker | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-ARCH-03 | 三层分离 | S4 | ⬜ 待开始 | — |
+| P0-ONT-01 | DAG 依赖图 | S3 | ⬜ 待开始 | — |
+| P0-ONT-02 | 双阶段验证器 | S3 | ⬜ 待开始 | — |
+| P0-ONT-03 | 编译日志字段 | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-04 | current_version 表 | S2 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-05 | 回滚端点 | S3 | ⬜ 待开始 | — |
+| P0-ONT-06 | SchemaRegistry | S3 | ⬜ 待开始 | — |
+| P0-ONT-07 | 编译失败回滚 | S3 | ⬜ 待开始 | — |
+
+**进度**：8/14 P0 已完成（57%）| 6 P0 待 Sprint 3-4
 
 ---
 

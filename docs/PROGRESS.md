@@ -1,8 +1,8 @@
-# Meatapivot 开发进度报告 (Verification Report)
+# Meatapivot 开发进度报告
 
-> **生成日期**: 2026-05-10 (扫描验证)
-> **验证方式**: 逐文件对比 TASKS.md 检查实际代码
-> **整体进度**: 12 DONE / 12 PARTIAL / 16 NOT STARTED → ~45%
+> **生成日期**: 2026-05-25
+> **验证方式**: 逐文件对比 TASKS.md + GAP-ANALYSIS.md 检查实际代码
+> **整体进度**: Sprint 1-2 完成（8 P0 闭合）/ 14 P0 总计 → P0 进度 57%
 
 ---
 
@@ -88,17 +88,31 @@
 
 ---
 
-## 本次会话修复 (2026-05-10)
+## Sprint 1-2 P0 修复完成 (2026-05-25)
 
-- ✅ INF-001 阻塞：`Tenant` 模型添加到 `database_models.py`
-- ✅ INF-002 阻塞：`redis_client.py` 补充 `get`/`set` 通用方法 (LLM Gateway 可用)
-- ✅ AIP-001 阻塞：`docker-compose.yml` 添加 `one-api` 服务 + `one_api_data` volume
-- ✅ AIP-001 阻塞：`.env.example` 补充 LLM Gateway 环境变量模板
-- ✅ P0 BUG：PropertyTable 编辑接入真实 API (useUpdateObject)
-- ✅ P0 BUG：Action 参数表单 (ActionDialog 组件)
-- ✅ P0 BUG：RelatedObjects 删除关系 (useDeleteLink + 悬停按钮)
-- ✅ Config 修复：pydantic-settings v2 兼容性 (extra=ignore + field_validator)
-- ✅ LLM 测试：Gateway 代码完整性验证通过
+### 安全修复（P0）
+- ✅ P0-SEC-01: Cypher 白名单注入防护 — `knowledge_graph.py` 白名单（MATCH/WITH/RETURN/CALL/UNWIND）+ 黑名单双重校验，注释过滤
+- ✅ P0-SEC-02: RestrictedPython 沙箱 — `sandbox_restricted.py` 模块，_check_forbidden_names + compile_restricted + asyncio 超时
+- ✅ P0-SEC-03: 真实 Auth 存储 — `auth.py` 重写，bcrypt 哈希 + PostgreSQL CRUD + JWT 签发/验证
+- ✅ P0-SEC-04: Document 查询真实化 — `documents.py` get/search/download 查真实 PostgreSQL + MinIO
+
+### 基础设施（P0）
+- ✅ P0-ARCH-01: Alembic 迁移配置 — `migrations/` + `alembic.ini` + async engine 配置
+- ✅ P0-ARCH-02: Celery Worker 服务 — `app/worker/celery_app.py` + `tasks.py`（文档/本体/决策流/函数任务）
+- ✅ P0-ONT-03: 编译日志表字段补全 — `ontology_models.py` +version/parent_version/diff_snapshot/neo4j_stmts/rolled_back_at
+- ✅ P0-ONT-04: current_version 表 — `OntologyCurrentVersion` 新模型（租户级当前版本）
+
+### 数据模型变更
+- ✅ `User` 模型: +`hashed_password`（bcrypt）
+- ✅ `UserResponse` 方案: 移除默认值，+`Config.from_attributes`
+- ✅ `init.sql`: 用户表 + hashed_password，admin bcrypt 预设，ontology_current_version 表
+
+### 文档更新
+- ✅ `GAP-ANALYSIS.md` — 30 项差异全景分析（14 P0 + 13 P1 + 3 P2）
+- ✅ `PRD-v2.2.md` — 基于差距分析重组的需求文档
+- ✅ `DEVPLAN-v2.2.md` — 6 Sprint 开发计划（8周/30任务）
+- ✅ `ARCHITECTURE-REVIEW.md` — 架构审查报告
+- ✅ `ONTOLOGY-DESIGN-v1.0.md` — Ontology 详细设计 + 22 项差异附录
 
 ---
 
@@ -109,4 +123,5 @@
 | 2026-05-06 | v2.0-plan | 初始进度报告 |
 | 2026-05-07 | v2.0-iter | Ontology 全部 CRUD Modal 完成 |
 | 2026-05-08-b | v2.0-iter | P0 修复 + LLM Gateway 测试 |
-| 2026-05-10 | v2.0-verify | **逐任务验证** + 修复 4 个跨模块阻塞缺陷 |
+| 2026-05-10 | v2.0-verify | 逐任务验证 + 修复 4 个跨模块阻塞缺陷 |
+| 2026-05-25 | v2.2-sprint1-2 | **Sprint 1-2 完成**：8 P0 闭合 + 文档更新 |
