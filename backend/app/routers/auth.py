@@ -93,11 +93,14 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     
+    # Use actual tenant_id from database, not JWT payload
+    tenant_id = str(user.tenant_id) if user.tenant_id else "tenant-default"
+    
     return UserResponse(
         id=str(user.id),
         username=user.username,
         email=user.email,
-        tenant_id=payload.get("tenant_id", "tenant-default"),
+        tenant_id=tenant_id,
         roles=payload.get("roles", [user.role]),
         created_at=user.created_at,
         is_active=user.is_active,
@@ -118,7 +121,8 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     # Create new user with hashed password
     # Use provided tenant_id or default tenant
     from uuid import UUID
-    tenant_uuid = None
+    DEFAULT_TENANT_UUID = UUID("00000000-0000-0000-0000-000000000000")
+    tenant_uuid = DEFAULT_TENANT_UUID
     if user_data.tenant_id:
         try:
             tenant_uuid = UUID(user_data.tenant_id)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, Integer, Text, ForeignKey, Index, CheckConstraint
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, Text, ForeignKey, Index, CheckConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.services.database import Base
@@ -20,7 +20,7 @@ class OntologyValueType(Base):
     version = Column(Integer, default=1)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_value_types_tenant", "tenant_id"),
@@ -49,7 +49,7 @@ class OntologyObjectType(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_object_types_tenant", "tenant_id"),
@@ -78,7 +78,7 @@ class OntologyLinkType(Base):
     version = Column(Integer, default=1)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_link_types_tenant", "tenant_id"),
@@ -103,7 +103,7 @@ class OntologyInterface(Base):
     status = Column(String(20), default="active")
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_interfaces_tenant", "tenant_id"),
@@ -131,7 +131,7 @@ class OntologyActionType(Base):
     status = Column(String(20), default="active")
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_action_types_tenant", "tenant_id"),
@@ -159,7 +159,7 @@ class OntologyFunction(Base):
     current_version = Column(Integer, default=1)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_functions_tenant", "tenant_id"),
@@ -201,7 +201,7 @@ class OntologyObject(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_objects_tenant", "tenant_id"),
@@ -227,7 +227,7 @@ class OntologyLink(Base):
     source_id = Column(String(255))
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_ontology_links_tenant", "tenant_id"),
@@ -363,7 +363,7 @@ class AIPAgentSession(Base):
     thread_id = Column(String(255))
     status = Column(String(20), default="active")
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
     ended_at = Column(DateTime(timezone=True))
 
     __table_args__ = (
@@ -439,7 +439,7 @@ class DataSource(Base):
     last_tested_at = Column(DateTime(timezone=True))
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_data_sources_tenant", "tenant_id"),
@@ -468,7 +468,7 @@ class DataPipeline(Base):
     last_run_log = Column(Text)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_data_pipelines_tenant", "tenant_id"),
@@ -496,7 +496,7 @@ class CDCSubscription(Base):
     total_events = Column(BigInteger, default=0)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default="NOW()")
-    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
 
     __table_args__ = (
         Index("idx_cdc_subscriptions_tenant", "tenant_id"),

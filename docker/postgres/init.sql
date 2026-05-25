@@ -92,10 +92,15 @@ CREATE INDEX IF NOT EXISTS idx_kg_entities_type ON kg_entities(entity_type);
 -- Text search index for documents
 CREATE INDEX IF NOT EXISTS idx_documents_filename_search ON documents USING gin(to_tsvector('english', original_name));
 
+-- Insert default tenant (required for foreign key constraint)
+INSERT INTO tenants (id, name, description, is_active)
+VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'Default Tenant', 'System default tenant', true)
+ON CONFLICT (id) DO NOTHING;
+
 -- Insert default admin user (password: admin123 — change immediately in production)
 -- bcrypt hash for 'admin123'
-INSERT INTO users (username, email, full_name, hashed_password, role) 
-VALUES ('admin', 'admin@localhost', 'System Administrator', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I1K', 'admin')
+INSERT INTO users (username, email, full_name, hashed_password, role, tenant_id) 
+VALUES ('admin', 'admin@localhost', 'System Administrator', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I1K', 'admin', '00000000-0000-0000-0000-000000000000')
 ON CONFLICT (username) DO NOTHING;
 
 -- Create updated_at trigger function
