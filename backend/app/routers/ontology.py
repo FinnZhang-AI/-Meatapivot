@@ -61,12 +61,21 @@ from app.models.ontology_schemas import (
     ImportError,
     OntologyImportRequest,
     OntologyImportResult,
+    RollbackRequest,
+    ValidationResponse,
+    CompileLogResponse,
+    CompileLogListResponse,
+    DAGCycleResponse,
+    DAGImpactResponse,
 )
 from app.services.database import get_db
 from app.services.neo4j_client import neo4j_client
 from app.services.ontology_compiler import OntologyCompiler
+from app.services.ontology_service import OntologyService
+from app.services.ontology_dag import OntologyDAG
 from app.services.semantic_search import SemanticSearchService
 from app.services.action_executor import ActionExecutor
+from app.repositories.ontology_repo import OntologyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -1445,6 +1454,165 @@ async def full_compile(
     compiler = OntologyCompiler(db, tenant_id)
     result = await compiler.full_compile()
     return result
+
+
+# ---------------------------------------------------------------------------
+# P0-ONT-05: Compile Rollback
+# ---------------------------------------------------------------------------
+
+@router.post("/compile/rollback", response_model=CompileResult)
+async def rollback_compile(
+    request: Request,
+    rollback_data: RollbackRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Rollback a specific compile by restoring previous constraints.
+    
+    P0-ONT-05: Drops Neo4j constraints from the specified compile
+    and marks the log as rolled_back.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    compiler = OntologyCompiler(db, tenant_id)
+    result = await compiler.rollback_compile(rollback_data.log_id)
+    return result
+
+
+@router.get("/compile/logs", response_model=CompileLogListResponse)
+async def list_compile_logs(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List compile logs for the tenant."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    logs = await service.get_compile_logs(limit=limit, offset=offset)
+    
+    items = []
+    for log in logs:
+        items.append(CompileLogResponse(
+            id=log.id,
+            tenant_id=log.tenant_id,
+            version=log.version,
+            parent_version=log.parent_version,
+            compile_type=log.compile_type,
+            status=log.status,
+            affected_types=log.affected_types or [],
+            duration_ms=log.duration_ms,
+            started_at=log.started_at,
+            completed_at=log.completed_at,
+            rolled_back_at=log.rolled_back_at,
+            error_count=len(log.errors) if log.errors else 0,
+            warning_count=len(log.warnings) if log.warnings else 0,
+        ))
+    
+    return CompileLogListResponse(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P0-ONT-02: Validation
+# ---------------------------------------------------------------------------
+
+@router.post("/compile/validate", response_model=ValidationResponse)
+async def validate_ontology(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run static validation on all ontology definitions.
+    
+    P0-ONT-02: Returns structured errors with error_kind, field, detail.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    errors = await service.validate_all()
+    
+    return ValidationResponse(
+        is_valid=len(errors) == 0,
+        errors=errors,
+        error_count=len(errors),
+        warning_count=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P0-ONT-01: DAG / Dependency
+# ---------------------------------------------------------------------------
+
+@router.get("/dag/cycle", response_model=DAGCycleResponse)
+async def detect_cycle(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Detect cycles in ontology dependencies.
+    
+    P0-ONT-01: Returns cycle path if found, otherwise no cycle.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    cycle = await service.detect_cycles()
+    
+    if cycle:
+        cycle_str = " -> ".join(str(n)[:8] for n in cycle)
+        return DAGCycleResponse(
+            has_cycle=True,
+            cycle_path=[str(n) for n in cycle],
+            cycle_description=f"Circular dependency detected: {cycle_str}",
+        )
+    
+    return DAGCycleResponse(has_cycle=False)
+
+
+@router.get("/dag/compile-order", response_model=List[str])
+async def get_compile_order(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get topological compile order for all ontology types.
+    
+    P0-ONT-01: Uses Kahn's algorithm. Returns 400 if cycle detected.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    
+    try:
+        order = await service.get_compile_order()
+        return [str(node_id) for node_id in order]
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/dag/impact/{node_id}", response_model=DAGImpactResponse)
+async def get_impact_set(
+    request: Request,
+    node_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all nodes that depend on the given node (BFS impact set).
+    
+    P0-ONT-01: Used for incremental compilation.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    dag = await service.build_dependency_dag()
+    
+    try:
+        nid = UUID(node_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid node_id UUID format")
+    
+    impact = dag.get_impact_set(nid)
+    
+    return DAGImpactResponse(
+        node_id=node_id,
+        impact_set=[str(n) for n in impact],
+        impact_count=len(impact),
+    )
 
 
 # ---------------------------------------------------------------------------

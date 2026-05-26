@@ -549,6 +549,56 @@ class ValueTypeListResponse(BaseModel):
     pages: int
 
 
+# ---------------------------------------------------------------------------
+# Compile / Rollback / Validation / DAG
+# ---------------------------------------------------------------------------
+
+class RollbackRequest(BaseModel):
+    log_id: UUID
+
+
+class ValidationResponse(BaseModel):
+    is_valid: bool
+    errors: List[Dict[str, Any]]
+    error_count: int
+    warning_count: int
+
+
+class CompileLogResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    version: str
+    parent_version: Optional[str] = None
+    compile_type: str
+    status: str
+    affected_types: List[UUID]
+    duration_ms: Optional[int] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    rolled_back_at: Optional[datetime] = None
+    error_count: int = 0
+    warning_count: int = 0
+
+
+class CompileLogListResponse(BaseModel):
+    items: List[CompileLogResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class DAGCycleResponse(BaseModel):
+    has_cycle: bool
+    cycle_path: Optional[List[str]] = None
+    cycle_description: Optional[str] = None
+
+
+class DAGImpactResponse(BaseModel):
+    node_id: str
+    impact_set: List[str]
+    impact_count: int
+
+
 PropertyDef.model_rebuild()
 InterfaceLinkRequirement.model_rebuild()
 ActionParameter.model_rebuild()
