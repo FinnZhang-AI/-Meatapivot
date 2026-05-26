@@ -1,0 +1,131 @@
+# Meatapivot Docker 集成测试环境
+# 用于 CI/CD 和本地集成测试
+# 启动核心服务（PostgreSQL + Neo4j + Redis + RabbitMQ + Backend）
+#
+# 使用方法:
+#   docker-compose -f docker-compose.test.yml up -d
+#   ./scripts/test-docker.sh
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: meatapivot-postgres-test
+    environment:
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: knowledge123
+      POSTGRES_DB: knowledge_db_test
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge_db_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - meatapivot-test-network
+
+  # Neo4j Graph Database
+  neo4j-test:
+    image: neo4j:5.15
+    container_name: meatapivot-neo4j-test
+    environment:
+      NEO4J_AUTH: neo4j/neo4j123
+      NEO4J_PLUGINS: '["apoc"]' 
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
+    volumes:
+      - neo4j_test_data:/data
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meatapivot-test-network
+
+  # Redis Cache
+  redis-test:
+    image: redis:7-alpine
+    container_name: meatapivot-redis-test
+    ports:
+      - "6380:6379"
+    networks:
+      - meatapivot-test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # RabbitMQ (for Celery worker tests)
+  rabbitmq-test:
+    image: rabbitmq:3.12-management-alpine
+    container_name: meatapivot-rabbitmq-test
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    networks:
+      - meatapivot-test-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API (FastAPI) - 测试模式
+  backend-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meatapivot-backend-test
+    environment:
+      DATABASE_URL: postgresql+asyncpg://knowledge:knowledge123@postgres-test:5432/knowledge_db_test
+      NEO4J_URI: bolt://neo4j-test:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: neo4j123
+      REDIS_URL: redis://redis-test:6379/0
+      RABBITMQ_URL: amqp://admin:admin123@rabbitmq-test:5672/
+      JWT_SECRET_KEY: test-secret-key-not-for-production
+      CELERY_BROKER_URL: amqp://admin:admin123@rabbitmq-test:5672/
+      CELERY_RESULT_BACKEND: redis://redis-test:6379/0
+      MINIO_ENDPOINT: ""
+      MILVUS_URI: ""
+      ENVIRONMENT: test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      neo4j-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+    networks:
+      - meatapivot-test-network
+    command: >
+      sh -c "
+        echo 'Waiting for services...' &&
+        sleep 5 &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
+volumes:
+  postgres_test_data:
+  neo4j_test_data:
+
+networks:
+  meatapivot-test-network:
+    driver: bridge

@@ -72,7 +72,8 @@ async def lifespan(app: FastAPI):
     # Initialize connections (with error handling for degraded mode)
     try:
         await postgres_client.connect()
-        logger.info("PostgreSQL connected")
+        await postgres_client.init_db()
+        logger.info("PostgreSQL connected and tables initialized")
     except Exception as e:
         logger.warning(f"PostgreSQL connection failed: {e}")
     
