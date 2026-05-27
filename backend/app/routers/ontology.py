@@ -69,6 +69,8 @@ from app.models.ontology_schemas import (
     DAGImpactResponse,
 )
 from app.services.database import get_db
+import time
+
 from app.services.neo4j_client import neo4j_client
 from app.services.ontology_compiler import OntologyCompiler
 from app.services.ontology_service import OntologyService
@@ -76,6 +78,14 @@ from app.services.ontology_dag import OntologyDAG
 from app.services.semantic_search import SemanticSearchService
 from app.services.action_executor import ActionExecutor
 from app.repositories.ontology_repo import OntologyRepository
+from app.core.metrics import (
+    COMPILE_FULL_DURATION,
+    COMPILE_INCREMENTAL_DURATION,
+    VALIDATION_DURATION,
+    DAG_DETECT_DURATION,
+    FUNCTION_EXEC_DURATION,
+    DAG_CYCLES_DETECTED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +266,42 @@ async def update_object_type(
     return _obj_type_resp(ot)
 
 
+@router.patch("/object-types/{id}", response_model=ObjectTypeResponse)
+async def patch_object_type(
+    id: UUID,
+    data: ObjectTypeUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Partial update Object Type (incremental update)."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    result = await db.execute(
+        select(OntologyObjectType).where(
+            OntologyObjectType.id == id,
+            OntologyObjectType.tenant_id == tenant_id,
+        )
+    )
+    ot = result.scalar_one_or_none()
+    if not ot:
+        raise HTTPException(status_code=404, detail="Object type not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields provided for update")
+
+    for key, value in update_data.items():
+        if key == "properties" and value is not None:
+            value = [p.model_dump() for p in value]
+        elif key == "implemented_interfaces" and value is not None:
+            value = list(value)
+        setattr(ot, key, value)
+
+    ot.version = (ot.version or 1) + 1
+    await db.flush()
+    await db.refresh(ot)
+    return _obj_type_resp(ot)
+
+
 @router.delete("/object-types/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_object_type(
     id: UUID,
@@ -279,8 +325,10 @@ async def compile_object_type(
 ):
     """Trigger incremental compilation for an Object Type."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    start = time.time()
     compiler = OntologyCompiler(db, tenant_id)
     result = await compiler.incremental_compile(id)
+    COMPILE_INCREMENTAL_DURATION.observe(time.time() - start)
     return result
 
 
@@ -1059,12 +1107,14 @@ async def execute_action(
 ):
     """Execute an action on a target object."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    start = time.time()
     executor = ActionExecutor(db, tenant_id)
     result = await executor.execute(
         action_type_id=id,
         target_object_id=data.target_object_id,
         parameters=data.parameters or {},
     )
+    FUNCTION_EXEC_DURATION.observe(time.time() - start)
     return result
 
 
@@ -1451,8 +1501,10 @@ async def full_compile(
 ):
     """Trigger full ontology compilation."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    start = time.time()
     compiler = OntologyCompiler(db, tenant_id)
     result = await compiler.full_compile()
+    COMPILE_FULL_DURATION.observe(time.time() - start)
     return result
 
 
@@ -1529,8 +1581,10 @@ async def validate_ontology(
     P0-ONT-02: Returns structured errors with error_kind, field, detail.
     """
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    start = time.time()
     service = OntologyService(db, tenant_id)
     errors = await service.validate_all()
+    VALIDATION_DURATION.observe(time.time() - start)
     
     return ValidationResponse(
         is_valid=len(errors) == 0,
@@ -1554,10 +1608,13 @@ async def detect_cycle(
     P0-ONT-01: Returns cycle path if found, otherwise no cycle.
     """
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    start = time.time()
     service = OntologyService(db, tenant_id)
     cycle = await service.detect_cycles()
+    DAG_DETECT_DURATION.observe(time.time() - start)
     
     if cycle:
+        DAG_CYCLES_DETECTED.inc()
         cycle_str = " -> ".join(str(n)[:8] for n in cycle)
         return DAGCycleResponse(
             has_cycle=True,

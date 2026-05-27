@@ -170,6 +170,14 @@ app.include_router(documents.router, prefix=f"{settings.API_PREFIX}/documents", 
 app.include_router(decision_flow.router, prefix=f"{settings.API_PREFIX}/decision-flows", tags=["Decision Flows"])
 app.include_router(knowledge_graph.router, prefix=f"{settings.API_PREFIX}/knowledge-graph", tags=["Knowledge Graph"])
 
+# OIDC / Keycloak router
+try:
+    from app.routers import oidc
+    app.include_router(oidc.router, prefix=f"{settings.API_PREFIX}/oidc", tags=["OIDC"])
+    logger.info("OIDC router registered")
+except Exception as e:
+    logger.warning(f"OIDC router not available: {e}")
+
 # NEW: Ontology and AIP routers (imported with lazy handling for missing deps)
 try:
     from app.routers import ontology

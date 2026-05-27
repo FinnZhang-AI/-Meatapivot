@@ -41,6 +41,7 @@ guardrails-ai==0.4.0
 presidio-analyzer==2.2.355
 RestrictedPython==7.4
 celery==5.3.6
+python-keycloak==3.12.0
 
 # Testing
 pytest==8.0.0
