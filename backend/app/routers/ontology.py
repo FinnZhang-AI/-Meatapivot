@@ -77,6 +77,7 @@ from app.services.ontology_service import OntologyService
 from app.services.ontology_dag import OntologyDAG
 from app.services.semantic_search import SemanticSearchService
 from app.services.action_executor import ActionExecutor
+from app.services.compiler.compiler import compile_ontology, compile_object_type as compile_single_object_type
 from app.repositories.ontology_repo import OntologyRepository
 from app.core.metrics import (
     COMPILE_FULL_DURATION,
@@ -164,32 +165,24 @@ async def create_object_type(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new Object Type."""
-    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))  # fallback; auth middleware should set this
-    # Check duplicate name within tenant
-    result = await db.execute(
-        select(OntologyObjectType).where(
-            OntologyObjectType.tenant_id == tenant_id,
-            OntologyObjectType.name == data.name,
-        )
-    )
-    if result.scalar_one_or_none():
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+
+    if await service.check_object_type_name_exists(data.name):
         raise HTTPException(status_code=409, detail="Object type name already exists")
 
-    obj_type = OntologyObjectType(
-        tenant_id=tenant_id,
-        name=data.name,
-        display_name=data.display_name or data.name,
-        description=data.description,
-        icon=data.icon or "box",
-        properties=[p.model_dump() for p in data.properties],
-        implemented_interfaces=list(data.implemented_interfaces) if data.implemented_interfaces else [],
-        neo4j_label=data.neo4j_label or data.name,
-        status="draft",
-    )
-    db.add(obj_type)
-    await db.flush()
-    await db.refresh(obj_type)
-    return _obj_type_resp(obj_type)
+    obj_data = {
+        "name": data.name,
+        "display_name": data.display_name or data.name,
+        "description": data.description,
+        "icon": data.icon or "box",
+        "properties": [p.model_dump() for p in data.properties],
+        "implemented_interfaces": list(data.implemented_interfaces) if data.implemented_interfaces else [],
+        "neo4j_label": data.neo4j_label or data.name,
+        "status": "draft",
+    }
+    created = await service.create_object_type(obj_data)
+    return _obj_type_resp(created)
 
 
 @router.get("/object-types", response_model=ObjectTypeListResponse)
@@ -202,35 +195,32 @@ async def list_object_types(
 ):
     """List Object Types with pagination."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    filters = [OntologyObjectType.tenant_id == tenant_id]
-    if status_filter:
-        filters.append(OntologyObjectType.status == status_filter)
-
-    total_result = await db.execute(
-        select(func.count()).select_from(OntologyObjectType).where(and_(*filters))
+    service = OntologyService(db, tenant_id)
+    items, total = await service.list_object_types_paginated(
+        status=status_filter,
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
-    total = total_result.scalar() or 0
-
-    result = await db.execute(
-        select(OntologyObjectType)
-        .where(and_(*filters))
-        .order_by(OntologyObjectType.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = [_obj_type_resp(ot) for ot in result.scalars().all()]
     pages = (total + page_size - 1) // page_size
-    return ObjectTypeListResponse(items=items, total=total, page=page, page_size=page_size, pages=pages)
+    return ObjectTypeListResponse(
+        items=[_obj_type_resp(ot) for ot in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages,
+    )
 
 
 @router.get("/object-types/{id}", response_model=ObjectTypeResponse)
 async def get_object_type(
+    request: Request,
     id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Get Object Type by ID."""
-    result = await db.execute(select(OntologyObjectType).where(OntologyObjectType.id == id))
-    ot = result.scalar_one_or_none()
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    ot = await service.get_object_type(id)
     if not ot:
         raise HTTPException(status_code=404, detail="Object type not found")
     return _obj_type_resp(ot)
@@ -238,96 +228,83 @@ async def get_object_type(
 
 @router.put("/object-types/{id}", response_model=ObjectTypeResponse)
 async def update_object_type(
+    request: Request,
     id: UUID,
     data: ObjectTypeUpdate,
     db: AsyncSession = Depends(get_db),
 ):
     """Update Object Type."""
-    result = await db.execute(select(OntologyObjectType).where(OntologyObjectType.id == id))
-    ot = result.scalar_one_or_none()
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+
+    updates = data.model_dump(exclude_unset=True)
+    if "properties" in updates and updates["properties"] is not None:
+        updates["properties"] = [p.model_dump() for p in updates["properties"]]
+    if "implemented_interfaces" in updates and updates["implemented_interfaces"] is not None:
+        updates["implemented_interfaces"] = list(updates["implemented_interfaces"])
+
+    ot = await service.update_object_type(id, updates)
     if not ot:
         raise HTTPException(status_code=404, detail="Object type not found")
-
-    if data.display_name is not None:
-        ot.display_name = data.display_name
-    if data.description is not None:
-        ot.description = data.description
-    if data.icon is not None:
-        ot.icon = data.icon
-    if data.properties is not None:
-        ot.properties = [p.model_dump() for p in data.properties]
-    if data.implemented_interfaces is not None:
-        ot.implemented_interfaces = list(data.implemented_interfaces)
-    if data.status is not None:
-        ot.status = data.status
-    ot.version = (ot.version or 1) + 1
-    await db.flush()
-    await db.refresh(ot)
     return _obj_type_resp(ot)
 
 
 @router.patch("/object-types/{id}", response_model=ObjectTypeResponse)
 async def patch_object_type(
+    request: Request,
     id: UUID,
     data: ObjectTypeUpdate,
-    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Partial update Object Type (incremental update)."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyObjectType).where(
-            OntologyObjectType.id == id,
-            OntologyObjectType.tenant_id == tenant_id,
-        )
-    )
-    ot = result.scalar_one_or_none()
-    if not ot:
-        raise HTTPException(status_code=404, detail="Object type not found")
+    service = OntologyService(db, tenant_id)
 
     update_data = data.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
 
-    for key, value in update_data.items():
-        if key == "properties" and value is not None:
-            value = [p.model_dump() for p in value]
-        elif key == "implemented_interfaces" and value is not None:
-            value = list(value)
-        setattr(ot, key, value)
+    if "properties" in update_data and update_data["properties"] is not None:
+        update_data["properties"] = [p.model_dump() for p in update_data["properties"]]
+    if "implemented_interfaces" in update_data and update_data["implemented_interfaces"] is not None:
+        update_data["implemented_interfaces"] = list(update_data["implemented_interfaces"])
 
-    ot.version = (ot.version or 1) + 1
-    await db.flush()
-    await db.refresh(ot)
+    ot = await service.update_object_type(id, update_data)
+    if not ot:
+        raise HTTPException(status_code=404, detail="Object type not found")
     return _obj_type_resp(ot)
 
 
 @router.delete("/object-types/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_object_type(
+    request: Request,
     id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Soft-delete Object Type (archive)."""
-    result = await db.execute(select(OntologyObjectType).where(OntologyObjectType.id == id))
-    ot = result.scalar_one_or_none()
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+
+    # Archive via service (soft-delete pattern)
+    ot = await service.update_object_type(id, {"status": "archived"})
     if not ot:
         raise HTTPException(status_code=404, detail="Object type not found")
-    ot.status = "archived"
-    await db.flush()
     return None
 
 
 @router.post("/object-types/{id}/compile", response_model=CompileResult)
-async def compile_object_type(
+async def compile_object_type_endpoint(
     id: UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Trigger incremental compilation for an Object Type."""
+    """Trigger incremental compilation for an Object Type.
+
+    Uses new CompilationPipeline (Sprint 3).
+    """
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
     start = time.time()
-    compiler = OntologyCompiler(db, tenant_id)
-    result = await compiler.incremental_compile(id)
+    result = await compile_single_object_type(db, tenant_id, id)
     COMPILE_INCREMENTAL_DURATION.observe(time.time() - start)
     return result
 
@@ -341,27 +318,13 @@ async def create_object_instance(
 ):
     """Create an object instance and sync to Neo4j."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
 
-    # Validate object type exists
-    result = await db.execute(
-        select(OntologyObjectType).where(
-            OntologyObjectType.id == id,
-            OntologyObjectType.tenant_id == tenant_id,
-        )
-    )
-    obj_type = result.scalar_one_or_none()
+    obj_type = await service.get_object_type(id)
     if not obj_type:
         raise HTTPException(status_code=404, detail="Object type not found")
 
-    # Check duplicate key
-    dup = await db.execute(
-        select(OntologyObject).where(
-            OntologyObject.tenant_id == tenant_id,
-            OntologyObject.object_type_id == id,
-            OntologyObject.object_key == data.object_key,
-        )
-    )
-    if dup.scalar_one_or_none():
+    if await service.check_object_key_exists(id, data.object_key):
         raise HTTPException(status_code=409, detail="Object key already exists for this type")
 
     obj = OntologyObject(
@@ -371,10 +334,8 @@ async def create_object_instance(
         properties=data.properties or {},
         status="active",
     )
-    db.add(obj)
-    await db.flush()
+    obj = await service.create_object(obj)
 
-    # Sync to Neo4j
     label = obj_type.neo4j_label or obj_type.name
     props = {"object_id": str(obj.id), "object_key": obj.object_key, "tenant_id": str(tenant_id)}
     props.update({k: v for k, v in (obj.properties or {}).items() if v is not None})
@@ -397,25 +358,15 @@ async def create_object_instance(
 @router.get("/object-types/{id}/objects", response_model=List[OntologyObjectResponse])
 async def list_objects_by_type(
     id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """List object instances of a given type."""
-    result = await db.execute(
-        select(OntologyObject).where(
-            OntologyObject.object_type_id == id,
-            OntologyObject.status != "archived",
-        ).order_by(OntologyObject.created_at.desc())
-    )
-    objs = result.scalars().all()
-
-    # Batch fetch type names
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    objs = await service.list_objects_by_type(id)
     type_ids = {o.object_type_id for o in objs}
-    type_result = await db.execute(
-        select(OntologyObjectType.id, OntologyObjectType.name).where(
-            OntologyObjectType.id.in_(type_ids)
-        )
-    )
-    type_names = {row[0]: row[1] for row in type_result.all()}
+    type_names = await service.get_object_type_names(list(type_ids))
     return [_obj_resp(o, type_names.get(o.object_type_id, "")) for o in objs]
 
 
@@ -427,20 +378,12 @@ async def get_object(
 ):
     """Get a single object instance by ID."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyObject).where(
-            OntologyObject.id == object_id,
-            OntologyObject.tenant_id == tenant_id,
-        )
-    )
-    obj = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    obj = await service.get_object(object_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Object not found")
-
-    type_result = await db.execute(
-        select(OntologyObjectType.name).where(OntologyObjectType.id == obj.object_type_id)
-    )
-    type_name = type_result.scalar() or ""
+    type_names = await service.get_object_type_names([obj.object_type_id])
+    type_name = type_names.get(obj.object_type_id, "")
     return _obj_resp(obj, type_name)
 
 
@@ -453,25 +396,18 @@ async def update_object(
 ):
     """Update an object instance (properties, key, status)."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyObject).where(
-            OntologyObject.id == object_id,
-            OntologyObject.tenant_id == tenant_id,
-        )
-    )
-    obj = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    obj = await service.get_object(object_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Object not found")
 
-    if data.object_key is not None:
-        obj.object_key = data.object_key
-    if data.properties is not None:
-        obj.properties = data.properties
-    if data.status is not None:
-        obj.status = data.status
-    await db.flush()
+    obj = await service.update_object(
+        object_id,
+        object_key=data.object_key,
+        properties=data.properties,
+        status=data.status,
+    )
 
-    # Sync to Neo4j if properties changed
     if data.properties is not None and obj.neo4j_node_id:
         try:
             cypher = """
@@ -489,10 +425,8 @@ async def update_object(
             logger.warning(f"Neo4j sync failed for object update {obj.id}: {e}")
 
     await db.refresh(obj)
-    type_result = await db.execute(
-        select(OntologyObjectType.name).where(OntologyObjectType.id == obj.object_type_id)
-    )
-    type_name = type_result.scalar() or ""
+    type_names = await service.get_object_type_names([obj.object_type_id])
+    type_name = type_names.get(obj.object_type_id, "")
     return _obj_resp(obj, type_name)
 
 
@@ -504,17 +438,11 @@ async def delete_link(
 ):
     """Delete a link instance (hard delete from PG + Neo4j)."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyLink).where(
-            OntologyLink.id == link_id,
-            OntologyLink.tenant_id == tenant_id,
-        )
-    )
-    link = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    link = await service.get_link(link_id)
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
 
-    # Delete from Neo4j
     if link.neo4j_rel_id:
         try:
             cypher = """
@@ -526,8 +454,7 @@ async def delete_link(
         except Exception as e:
             logger.warning(f"Neo4j delete failed for link {link.id}: {e}")
 
-    await db.delete(link)
-    await db.flush()
+    await service.delete_link(link_id)
     return None
 
 
@@ -539,22 +466,10 @@ async def get_object_links(
 ):
     """Get all links connected to an object (as source or target)."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyLink).where(
-            OntologyLink.tenant_id == tenant_id,
-            (OntologyLink.source_object_id == object_id) | (OntologyLink.target_object_id == object_id),
-        )
-    )
-    links = result.scalars().all()
-
-    # Fetch link type names
+    service = OntologyService(db, tenant_id)
+    links = await service.list_object_links(object_id)
     link_type_ids = {l.link_type_id for l in links}
-    lt_result = await db.execute(
-        select(OntologyLinkType.id, OntologyLinkType.name).where(
-            OntologyLinkType.id.in_(link_type_ids)
-        )
-    )
-    link_type_names = {row[0]: row[1] for row in lt_result.all()}
+    link_type_names = await service.get_link_type_names(list(link_type_ids))
 
     return [
         OntologyLinkResponse(
@@ -584,16 +499,12 @@ async def create_link_type(
 ):
     """Create a new Link Type."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
 
     # Validate source/target types exist
     for type_id, field in [(data.source_object_type_id, "source"), (data.target_object_type_id, "target")]:
-        r = await db.execute(
-            select(OntologyObjectType).where(
-                OntologyObjectType.id == type_id,
-                OntologyObjectType.tenant_id == tenant_id,
-            )
-        )
-        if not r.scalar_one_or_none():
+        ot = await service.get_object_type(type_id)
+        if not ot:
             raise HTTPException(status_code=404, detail=f"{field} object type not found")
 
     lt = OntologyLinkType(
@@ -623,33 +534,17 @@ async def list_link_types(
 ):
     """List Link Types."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    total_result = await db.execute(
-        select(func.count()).select_from(OntologyLinkType).where(
-            OntologyLinkType.tenant_id == tenant_id
-        )
+    service = OntologyService(db, tenant_id)
+    items, total = await service.list_link_types_paginated(
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
-    total = total_result.scalar() or 0
 
-    result = await db.execute(
-        select(OntologyLinkType)
-        .where(OntologyLinkType.tenant_id == tenant_id)
-        .order_by(OntologyLinkType.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = result.scalars().all()
-
-    # Fetch type names
     type_ids = set()
     for lt in items:
         type_ids.add(lt.source_object_type_id)
         type_ids.add(lt.target_object_type_id)
-    type_result = await db.execute(
-        select(OntologyObjectType.id, OntologyObjectType.name).where(
-            OntologyObjectType.id.in_(type_ids)
-        )
-    )
-    type_names = {row[0]: row[1] for row in type_result.all()}
+    type_names = await service.get_object_type_names(list(type_ids))
 
     pages = (total + page_size - 1) // page_size
     return LinkTypeListResponse(
@@ -659,18 +554,29 @@ async def list_link_types(
 
 
 @router.get("/link-types/{id}", response_model=LinkTypeResponse)
-async def get_link_type(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyLinkType).where(OntologyLinkType.id == id))
-    lt = result.scalar_one_or_none()
+async def get_link_type(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    lt = await service.get_link_type(id)
     if not lt:
         raise HTTPException(status_code=404, detail="Link type not found")
     return _link_type_resp(lt)
 
 
 @router.put("/link-types/{id}", response_model=LinkTypeResponse)
-async def update_link_type(id: UUID, data: LinkTypeUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyLinkType).where(OntologyLinkType.id == id))
-    lt = result.scalar_one_or_none()
+async def update_link_type(
+    request: Request,
+    id: UUID,
+    data: LinkTypeUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    lt = await service.get_link_type(id)
     if not lt:
         raise HTTPException(status_code=404, detail="Link type not found")
     if data.display_name is not None:
@@ -690,9 +596,14 @@ async def update_link_type(id: UUID, data: LinkTypeUpdate, db: AsyncSession = De
 
 
 @router.delete("/link-types/{id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_link_type(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyLinkType).where(OntologyLinkType.id == id))
-    lt = result.scalar_one_or_none()
+async def delete_link_type(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    lt = await service.get_link_type(id)
     if not lt:
         raise HTTPException(status_code=404, detail="Link type not found")
     lt.status = "archived"
@@ -709,28 +620,18 @@ async def create_link_instance(
 ):
     """Create a link instance between two objects."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
 
-    # Validate link type
-    r = await db.execute(
-        select(OntologyLinkType).where(
-            OntologyLinkType.id == id,
-            OntologyLinkType.tenant_id == tenant_id,
-        )
-    )
-    lt = r.scalar_one_or_none()
+    lt = await service.get_link_type(id)
     if not lt:
         raise HTTPException(status_code=404, detail="Link type not found")
 
-    # Validate source/target objects
-    for obj_id, field in [(data.source_object_id, "source"), (data.target_object_id, "target")]:
-        obj_r = await db.execute(
-            select(OntologyObject).where(
-                OntologyObject.id == obj_id,
-                OntologyObject.tenant_id == tenant_id,
-            )
-        )
-        if not obj_r.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail=f"{field} object not found")
+    src_obj = await service.get_object(data.source_object_id)
+    if not src_obj:
+        raise HTTPException(status_code=404, detail="source object not found")
+    tgt_obj = await service.get_object(data.target_object_id)
+    if not tgt_obj:
+        raise HTTPException(status_code=404, detail="target object not found")
 
     link = OntologyLink(
         tenant_id=tenant_id,
@@ -742,17 +643,10 @@ async def create_link_instance(
     db.add(link)
     await db.flush()
 
-    # Sync to Neo4j
     edge_type = lt.neo4j_edge_type or lt.name
     try:
-        src_r = await db.execute(
-            select(OntologyObject.neo4j_node_id).where(OntologyObject.id == data.source_object_id)
-        )
-        tgt_r = await db.execute(
-            select(OntologyObject.neo4j_node_id).where(OntologyObject.id == data.target_object_id)
-        )
-        src_node_id = src_r.scalar()
-        tgt_node_id = tgt_r.scalar()
+        src_node_id = src_obj.neo4j_node_id
+        tgt_node_id = tgt_obj.neo4j_node_id
 
         if src_node_id and tgt_node_id:
             cypher = f"""
@@ -797,18 +691,16 @@ async def create_interface(
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    iface = OntologyInterface(
-        tenant_id=tenant_id,
-        name=data.name,
-        display_name=data.display_name or data.name,
-        description=data.description,
-        required_properties=[p.model_dump() for p in data.required_properties] if data.required_properties else [],
-        required_links=[l.model_dump() for l in data.required_links] if data.required_links else [],
-        status="active",
-    )
-    db.add(iface)
-    await db.flush()
-    await db.refresh(iface)
+    service = OntologyService(db, tenant_id)
+    iface_data = {
+        "name": data.name,
+        "display_name": data.display_name or data.name,
+        "description": data.description,
+        "required_properties": [p.model_dump() for p in data.required_properties] if data.required_properties else [],
+        "required_links": [l.model_dump() for l in data.required_links] if data.required_links else [],
+        "status": "active",
+    }
+    iface = await service.create_interface(iface_data)
     return InterfaceResponse(
         id=iface.id,
         tenant_id=iface.tenant_id,
@@ -831,20 +723,11 @@ async def list_interfaces(
     page_size: int = Query(20, ge=1, le=100),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    total_result = await db.execute(
-        select(func.count()).select_from(OntologyInterface).where(
-            OntologyInterface.tenant_id == tenant_id
-        )
+    service = OntologyService(db, tenant_id)
+    items, total = await service.list_interfaces_paginated(
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
-    total = total_result.scalar() or 0
-    result = await db.execute(
-        select(OntologyInterface)
-        .where(OntologyInterface.tenant_id == tenant_id)
-        .order_by(OntologyInterface.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = result.scalars().all()
     pages = (total + page_size - 1) // page_size
     return InterfaceListResponse(
         items=[InterfaceResponse(
@@ -864,9 +747,14 @@ async def list_interfaces(
 
 
 @router.get("/interfaces/{id}", response_model=InterfaceResponse)
-async def get_interface(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyInterface).where(OntologyInterface.id == id))
-    iface = result.scalar_one_or_none()
+async def get_interface(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    iface = await service.get_interface(id)
     if not iface:
         raise HTTPException(status_code=404, detail="Interface not found")
     return InterfaceResponse(
@@ -884,23 +772,22 @@ async def get_interface(id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/interfaces/{id}", response_model=InterfaceResponse)
-async def update_interface(id: UUID, data: InterfaceUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyInterface).where(OntologyInterface.id == id))
-    iface = result.scalar_one_or_none()
+async def update_interface(
+    request: Request,
+    id: UUID,
+    data: InterfaceUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    updates = data.model_dump(exclude_unset=True)
+    if "required_properties" in updates and updates["required_properties"] is not None:
+        updates["required_properties"] = [p.model_dump() for p in updates["required_properties"]]
+    if "required_links" in updates and updates["required_links"] is not None:
+        updates["required_links"] = [l.model_dump() for l in updates["required_links"]]
+    iface = await service.update_interface(id, **updates)
     if not iface:
         raise HTTPException(status_code=404, detail="Interface not found")
-    if data.display_name is not None:
-        iface.display_name = data.display_name
-    if data.description is not None:
-        iface.description = data.description
-    if data.required_properties is not None:
-        iface.required_properties = [p.model_dump() for p in data.required_properties]
-    if data.required_links is not None:
-        iface.required_links = [l.model_dump() for l in data.required_links]
-    if data.status is not None:
-        iface.status = data.status
-    await db.flush()
-    await db.refresh(iface)
     return InterfaceResponse(
         id=iface.id,
         tenant_id=iface.tenant_id,
@@ -916,9 +803,14 @@ async def update_interface(id: UUID, data: InterfaceUpdate, db: AsyncSession = D
 
 
 @router.delete("/interfaces/{id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_interface(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyInterface).where(OntologyInterface.id == id))
-    iface = result.scalar_one_or_none()
+async def delete_interface(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    iface = await service.get_interface(id)
     if not iface:
         raise HTTPException(status_code=404, detail="Interface not found")
     iface.status = "archived"
@@ -937,22 +829,20 @@ async def create_action_type(
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    at = OntologyActionType(
-        tenant_id=tenant_id,
-        name=data.name,
-        display_name=data.display_name or data.name,
-        description=data.description,
-        target_object_type_id=data.target_object_type_id,
-        parameters=[p.model_dump() for p in data.parameters] if data.parameters else [],
-        modifies_properties=data.modifies_properties or [],
-        modifies_links=data.modifies_links or [],
-        rules=[r.model_dump() for r in data.rules] if data.rules else [],
-        execution_type=data.execution_type or "direct",
-        status="active",
-    )
-    db.add(at)
-    await db.flush()
-    await db.refresh(at)
+    service = OntologyService(db, tenant_id)
+    at_data = {
+        "name": data.name,
+        "display_name": data.display_name or data.name,
+        "description": data.description,
+        "target_object_type_id": data.target_object_type_id,
+        "parameters": [p.model_dump() for p in data.parameters] if data.parameters else [],
+        "modifies_properties": data.modifies_properties or [],
+        "modifies_links": data.modifies_links or [],
+        "rules": [r.model_dump() for r in data.rules] if data.rules else [],
+        "execution_type": data.execution_type or "direct",
+        "status": "active",
+    }
+    at = await service.create_action_type(at_data)
     return ActionTypeResponse(
         id=at.id,
         tenant_id=at.tenant_id,
@@ -979,20 +869,11 @@ async def list_action_types(
     page_size: int = Query(20, ge=1, le=100),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    total_result = await db.execute(
-        select(func.count()).select_from(OntologyActionType).where(
-            OntologyActionType.tenant_id == tenant_id
-        )
+    service = OntologyService(db, tenant_id)
+    items, total = await service.list_action_types_paginated(
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
-    total = total_result.scalar() or 0
-    result = await db.execute(
-        select(OntologyActionType)
-        .where(OntologyActionType.tenant_id == tenant_id)
-        .order_by(OntologyActionType.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = result.scalars().all()
     pages = (total + page_size - 1) // page_size
     return ActionTypeListResponse(
         items=[ActionTypeResponse(
@@ -1016,9 +897,14 @@ async def list_action_types(
 
 
 @router.get("/action-types/{id}", response_model=ActionTypeResponse)
-async def get_action_type(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyActionType).where(OntologyActionType.id == id))
-    at = result.scalar_one_or_none()
+async def get_action_type(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    at = await service.get_action_type(id)
     if not at:
         raise HTTPException(status_code=404, detail="Action type not found")
     return ActionTypeResponse(
@@ -1040,25 +926,22 @@ async def get_action_type(id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/action-types/{id}", response_model=ActionTypeResponse)
-async def update_action_type(id: UUID, data: ActionTypeUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyActionType).where(OntologyActionType.id == id))
-    at = result.scalar_one_or_none()
+async def update_action_type(
+    request: Request,
+    id: UUID,
+    data: ActionTypeUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    updates = data.model_dump(exclude_unset=True)
+    if "parameters" in updates and updates["parameters"] is not None:
+        updates["parameters"] = [p.model_dump() for p in updates["parameters"]]
+    if "rules" in updates and updates["rules"] is not None:
+        updates["rules"] = [r.model_dump() for r in updates["rules"]]
+    at = await service.update_action_type(id, **updates)
     if not at:
         raise HTTPException(status_code=404, detail="Action type not found")
-    if data.display_name is not None:
-        at.display_name = data.display_name
-    if data.description is not None:
-        at.description = data.description
-    if data.parameters is not None:
-        at.parameters = [p.model_dump() for p in data.parameters]
-    if data.rules is not None:
-        at.rules = [r.model_dump() for r in data.rules]
-    if data.execution_type is not None:
-        at.execution_type = data.execution_type
-    if data.status is not None:
-        at.status = data.status
-    await db.flush()
-    await db.refresh(at)
     return ActionTypeResponse(
         id=at.id,
         tenant_id=at.tenant_id,
@@ -1079,22 +962,17 @@ async def update_action_type(id: UUID, data: ActionTypeUpdate, db: AsyncSession 
 
 @router.delete("/action-types/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_action_type(
-    id: UUID,
     request: Request,
+    id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyActionType).where(
-            OntologyActionType.id == id,
-            OntologyActionType.tenant_id == tenant_id,
-        )
-    )
-    at = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    at = await service.get_action_type(id)
     if not at:
         raise HTTPException(status_code=404, detail="Action type not found")
     at.status = "archived"
-    await db.commit()
+    await db.flush()
     return None
 
 
@@ -1129,20 +1007,19 @@ async def create_function(
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    fn = OntologyFunction(
-        tenant_id=tenant_id,
-        name=data.name,
-        display_name=data.display_name or data.name,
-        description=data.description,
-        language=data.language or "python",
-        code=data.code,
-        read_only=data.read_only or False,
-        timeout_seconds=data.timeout_seconds or 30,
-        memory_mb=data.memory_mb or 256,
-        status="active",
-    )
-    db.add(fn)
-    await db.flush()
+    service = OntologyService(db, tenant_id)
+    fn_data = {
+        "name": data.name,
+        "display_name": data.display_name or data.name,
+        "description": data.description,
+        "language": data.language or "python",
+        "code": data.code,
+        "read_only": data.read_only or False,
+        "timeout_seconds": data.timeout_seconds or 30,
+        "memory_mb": data.memory_mb or 256,
+        "status": "active",
+    }
+    fn = await service.create_function(fn_data)
 
     # Create initial version
     version = OntologyFunctionVersion(
@@ -1180,20 +1057,11 @@ async def list_functions(
     page_size: int = Query(20, ge=1, le=100),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    total_result = await db.execute(
-        select(func.count()).select_from(OntologyFunction).where(
-            OntologyFunction.tenant_id == tenant_id
-        )
+    service = OntologyService(db, tenant_id)
+    items, total = await service.list_functions_paginated(
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
-    total = total_result.scalar() or 0
-    result = await db.execute(
-        select(OntologyFunction)
-        .where(OntologyFunction.tenant_id == tenant_id)
-        .order_by(OntologyFunction.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    items = result.scalars().all()
     pages = (total + page_size - 1) // page_size
     return FunctionListResponse(
         items=[FunctionResponse(
@@ -1217,9 +1085,14 @@ async def list_functions(
 
 
 @router.get("/functions/{id}", response_model=FunctionResponse)
-async def get_function(id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyFunction).where(OntologyFunction.id == id))
-    fn = result.scalar_one_or_none()
+async def get_function(
+    request: Request,
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    fn = await service.get_function(id)
     if not fn:
         raise HTTPException(status_code=404, detail="Function not found")
     return FunctionResponse(
@@ -1241,9 +1114,15 @@ async def get_function(id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/functions/{id}", response_model=FunctionResponse)
-async def update_function(id: UUID, data: FunctionUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OntologyFunction).where(OntologyFunction.id == id))
-    fn = result.scalar_one_or_none()
+async def update_function(
+    request: Request,
+    id: UUID,
+    data: FunctionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    service = OntologyService(db, tenant_id)
+    fn = await service.get_function(id)
     if not fn:
         raise HTTPException(status_code=404, detail="Function not found")
     if fn.read_only:
@@ -1291,22 +1170,17 @@ async def update_function(id: UUID, data: FunctionUpdate, db: AsyncSession = Dep
 
 @router.delete("/functions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_function(
-    id: UUID,
     request: Request,
+    id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyFunction).where(
-            OntologyFunction.id == id,
-            OntologyFunction.tenant_id == tenant_id,
-        )
-    )
-    fn = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    fn = await service.get_function(id)
     if not fn:
         raise HTTPException(status_code=404, detail="Function not found")
     fn.status = "archived"
-    await db.commit()
+    await db.flush()
     return None
 
 
@@ -1318,13 +1192,8 @@ async def test_function(
 ):
     """Test-run a function in sandbox mode."""
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
-    result = await db.execute(
-        select(OntologyFunction).where(
-            OntologyFunction.id == id,
-            OntologyFunction.tenant_id == tenant_id,
-        )
-    )
-    fn = result.scalar_one_or_none()
+    service = OntologyService(db, tenant_id)
+    fn = await service.get_function(id)
     if not fn:
         raise HTTPException(status_code=404, detail="Function not found")
 
@@ -1499,11 +1368,13 @@ async def full_compile(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Trigger full ontology compilation."""
+    """Trigger full ontology compilation.
+
+    Uses new CompilationPipeline (Sprint 3) with 6-stage orchestration.
+    """
     tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
     start = time.time()
-    compiler = OntologyCompiler(db, tenant_id)
-    result = await compiler.full_compile()
+    result = await compile_ontology(db, tenant_id)
     COMPILE_FULL_DURATION.observe(time.time() - start)
     return result
 

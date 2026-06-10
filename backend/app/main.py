@@ -164,6 +164,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Tenant Middleware (injects request.state.tenant_id)
+from app.middleware import TenantMiddleware
+app.add_middleware(TenantMiddleware)
+
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_PREFIX, tags=["Authentication"])
 app.include_router(documents.router, prefix=f"{settings.API_PREFIX}/documents", tags=["Documents"])

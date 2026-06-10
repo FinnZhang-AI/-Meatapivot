@@ -2,7 +2,7 @@
 
 > **生成日期**: 2026-05-25
 > **验证方式**: 逐文件对比 TASKS.md + GAP-ANALYSIS.md 检查实际代码
-> **整体进度**: Sprint 1-2 完成（8 P0 闭合）/ 14 P0 总计 → P0 进度 57%
+> **整体进度**: Sprint 1-3 完成（12 P0 闭合）/ 14 P0 总计 → P0 进度 86%
 
 ---
 
@@ -80,11 +80,11 @@
 | 模块 | 任务数 | DONE | PARTIAL | NOT STARTED |
 |------|--------|------|---------|-------------|
 | INF | 4 | 2 | 2 | 0 |
-| ONT | 12 | 9 | 3 | 0 |
+| ONT | 12 | 8 | 4 | 1 |
 | AIP | 10 | 2 | 3 | 5 |
 | APP-F | 8 | 6 | 0 | 2 |
 | FDR | 6 | 0 | 0 | 6 |
-| **总计** | **40** | **19** | **8** | **13** |
+| **总计** | **40** | **18** | **9** | **14** |
 
 ---
 
@@ -116,6 +116,26 @@
 
 ---
 
+## Sprint 3 P0 修复完成 (2026-06-11)
+
+### Ontology 编译器（P0）
+- ✅ P0-ONT-01: DAG 依赖图 — `ontology_dag.py` (177行) Kahn 拓扑排序 + DFS 循环检测 + BFS 影响集
+- ✅ P0-ONT-02: 双阶段验证器 — `ontology_validator.py` (286行) StaticValidator + RuntimeValidator，error_kind="missing_property"
+- ✅ P0-ONT-05: 回滚端点 — `POST /compile/rollback` + `rollback_compile()` 方法实现
+- ✅ P0-ONT-06: SchemaRegistry 缓存 — `schema_registry.py` (190行) Redis-backed 缓存，TTL 1小时
+- ✅ P0-ONT-07: 编译失败事务回滚 — `_rollback_neo4j_constraints()` + compile log 状态追踪
+
+### 编译器五模块拆分（P1）
+- ✅ P1-01: 编译器模块化 — `services/compiler/` 目录，4 个新模块
+  - `neo4j_emitter.py` — Neo4j 约束发射
+  - `schema_emitter.py` — GraphQL Schema 生成
+  - `incremental.py` — DAG 影响集增量编译
+  - `compiler.py` — 6 阶段流水线编排
+- ✅ P1-03: 6 阶段编译流水线 — `CompilationPipeline` (load→DAG→validate→neo4j→schema→commit)
+- ✅ P1-07: `POST /compile` type 参数 — full/incremental编译类型支持
+
+---
+
 ## 更新记录
 
 | 日期 | 版本 | 变更 |
@@ -125,3 +145,4 @@
 | 2026-05-08-b | v2.0-iter | P0 修复 + LLM Gateway 测试 |
 | 2026-05-10 | v2.0-verify | 逐任务验证 + 修复 4 个跨模块阻塞缺陷 |
 | 2026-05-25 | v2.2-sprint1-2 | **Sprint 1-2 完成**：8 P0 闭合 + 文档更新 |
+| 2026-06-11 | v2.2-sprint3 | **Sprint 3 完成**：编译器五模块拆分 + DAG + 验证器 + 回滚端点 + SchemaRegistry +流水线编排 |

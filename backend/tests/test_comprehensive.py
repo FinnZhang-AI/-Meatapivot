@@ -11,7 +11,7 @@ import ast
 import json
 import os
 
-sys.path.insert(0, '/Users/zhangshunguo/project/-Meatapivot/backend')
+sys.path.insert(0, '/Users/zhangshunguo/project/Meatapivot/backend')
 
 # ---------------------------------------------------------------------------
 # Test Configuration
@@ -301,7 +301,7 @@ def test_sandbox_funcdef_allowed():
 @test("Auth: User model has required fields")
 def test_auth_model_fields():
     """Validate database model has all required auth fields."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/database_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/database_models.py').read()
     assert "class User(Base):" in source
     assert "hashed_password" in source
     assert "tenant_id" in source
@@ -311,7 +311,7 @@ def test_auth_model_fields():
 @test("Auth: Router uses bcrypt")
 def test_auth_router_bcrypt():
     """Validate auth router uses bcrypt."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/auth.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/auth.py').read()
     assert 'CryptContext(schemes=["bcrypt"]' in source
     assert "verify_password" in source
     assert "get_password_hash" in source
@@ -321,26 +321,26 @@ def test_auth_router_bcrypt():
 @test("Auth: JWT token includes tenant_id")
 def test_auth_jwt_tenant():
     """Validate JWT payload includes tenant_id."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/auth.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/auth.py').read()
     assert '"tenant_id"' in source
 
 @test("Auth: get_current_user validates against DB")
 def test_auth_db_validation():
     """Validate token validation queries database."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/auth.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/auth.py').read()
     assert "get_user_by_username" in source
     assert "select(User)" in source
 
 @test("Auth: Default tenant UUID set")
 def test_auth_default_tenant():
     """Validate default tenant UUID is set for new users."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/auth.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/auth.py').read()
     assert "00000000-0000-0000-0000-000000000000" in source
 
 @test("Auth: init.sql has default tenant")
 def test_auth_init_sql():
     """Validate init.sql inserts default tenant."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/docker/postgres/init.sql').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/docker/postgres/init.sql').read()
     assert "INSERT INTO tenants" in source
     assert "00000000-0000-0000-0000-000000000000" in source
 
@@ -352,7 +352,7 @@ def test_auth_init_sql():
 @test("Document: Uses SQLAlchemy select")
 def test_doc_sqlalchemy():
     """Validate documents.py uses real SQLAlchemy queries."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/documents.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/documents.py').read()
     assert "from sqlalchemy import select" in source
     assert "select(Document)" in source
     assert "db.execute(" in source
@@ -360,13 +360,13 @@ def test_doc_sqlalchemy():
 @test("Document: UUID validation for document_id")
 def test_doc_uuid_validation():
     """Validate document_id is parsed as UUID."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/documents.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/documents.py').read()
     assert "uuid.UUID(document_id)" in source
 
 @test("Document: UUID validation for user")
 def test_doc_user_uuid():
     """Validate user ID is parsed as UUID."""
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/documents.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/documents.py').read()
     assert "uuid.UUID(current_user.id)" in source
 
 
@@ -376,17 +376,17 @@ def test_doc_user_uuid():
 
 @test("Alembic: Config file exists")
 def test_alembic_config():
-    assert os.path.exists('/Users/zhangshunguo/project/-Meatapivot/backend/alembic.ini')
+    assert os.path.exists('/Users/zhangshunguo/project/Meatapivot/backend/alembic.ini')
 
 @test("Alembic: env.py uses async engine")
 def test_alembic_async():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/migrations/env.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/migrations/env.py').read()
     assert "async_engine_from_config" in source
     assert "run_sync" in source
 
 @test("Alembic: target metadata set")
 def test_alembic_metadata():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/migrations/env.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/migrations/env.py').read()
     assert "target_metadata" in source
 
 
@@ -396,23 +396,23 @@ def test_alembic_metadata():
 
 @test("Compile Log: Has version field")
 def test_compile_version():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     assert "version" in source
     assert "parent_version" in source
 
 @test("Compile Log: Has diff_snapshot field")
 def test_compile_diff():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     assert "diff_snapshot" in source
 
 @test("Compile Log: Has neo4j_stmts field")
 def test_compile_neo4j():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     assert "neo4j_stmts" in source
 
 @test("Compile Log: Has rolled_back_at field")
 def test_compile_rollback():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     assert "rolled_back_at" in source
 
 
@@ -422,12 +422,12 @@ def test_compile_rollback():
 
 @test("Current Version: Model exists")
 def test_current_version_model():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     assert "class OntologyCurrentVersion" in source
 
 @test("Current Version: Has tenant_id")
 def test_current_version_tenant():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     # Check OntologyCurrentVersion has tenant_id
     lines = source.split('\n')
     in_class = False
@@ -449,31 +449,31 @@ def test_current_version_tenant():
 
 @test("Celery: App file exists")
 def test_celery_app():
-    assert os.path.exists('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/celery_app.py')
+    assert os.path.exists('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/celery_app.py')
 
 @test("Celery: Tasks file exists")
 def test_celery_tasks():
-    assert os.path.exists('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/tasks.py')
+    assert os.path.exists('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/tasks.py')
 
 @test("Celery: Uses RabbitMQ broker")
 def test_celery_broker():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/celery_app.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/celery_app.py').read()
     assert "amqp://" in source
 
 @test("Celery: Uses Redis backend")
 def test_celery_backend():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/celery_app.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/celery_app.py').read()
     assert "redis://" in source
 
 @test("Celery: UTC timezone configured")
 def test_celery_utc():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/celery_app.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/celery_app.py').read()
     assert "UTC" in source
     assert "enable_utc" in source
 
 @test("Celery: Task retry configured")
 def test_celery_retry():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/worker/celery_app.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/worker/celery_app.py').read()
     assert "task_max_retries" in source
 
 
@@ -494,27 +494,27 @@ def test_syntax_valid():
         'migrations/env.py',
     ]
     for f in files:
-        path = f'/Users/zhangshunguo/project/-Meatapivot/backend/{f}'
+        path = f'/Users/zhangshunguo/project/Meatapivot/backend/{f}'
         with open(path) as fh:
             ast.parse(fh.read())
 
 @test("Code: No hardcoded secrets in auth.py")
 def test_no_hardcoded_secrets():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/routers/auth.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/routers/auth.py').read()
     # Should use settings, not hardcoded values
     assert "settings.JWT_SECRET_KEY" in source
     assert "settings.JWT_ALGORITHM" in source
 
 @test("Code: onupdate uses func.now()")
 def test_onupdate_func_now():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/app/models/ontology_models.py').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/app/models/ontology_models.py').read()
     # Should not have string-based NOW()
     assert 'onupdate="NOW()"' not in source
     assert "func.now()" in source
 
 @test("Requirements: pytest listed")
 def test_requirements_pytest():
-    source = open('/Users/zhangshunguo/project/-Meatapivot/backend/requirements.txt').read()
+    source = open('/Users/zhangshunguo/project/Meatapivot/backend/requirements.txt').read()
     assert "pytest==" in source
     assert "pytest-asyncio" in source
 

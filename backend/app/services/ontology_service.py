@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ontology_models import (
     OntologyObjectType,
+    OntologyObject,
     OntologyLinkType,
+    OntologyLink,
     OntologyInterface,
     OntologyCompileLog,
     OntologyCurrentVersion,
@@ -41,6 +43,21 @@ class OntologyService:
     
     async def list_object_types(self, status: Optional[str] = None) -> List[OntologyObjectType]:
         return await self.repo.list_object_types(self.tenant_id, status)
+
+    async def list_object_types_paginated(
+        self,
+        status: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[List[OntologyObjectType], int]:
+        """Return (items, total_count) for pagination."""
+        items = await self.repo.list_object_types_paginated(self.tenant_id, status, limit, offset)
+        total = await self.repo.count_object_types(self.tenant_id, status)
+        return items, total
+    
+    async def check_object_type_name_exists(self, name: str) -> bool:
+        """Check if ObjectType name already exists for this tenant."""
+        return await self.repo.object_type_name_exists(self.tenant_id, name)
     
     async def create_object_type(self, data: Dict[str, Any]) -> OntologyObjectType:
         """Create ObjectType with validation."""
@@ -81,6 +98,39 @@ class OntologyService:
         return result
     
     # ------------------------------------------------------------------
+    # OntologyObject (instance)
+    # ------------------------------------------------------------------
+    
+    async def get_object(self, object_id: UUID) -> Optional[OntologyObject]:
+        return await self.repo.get_object(self.tenant_id, object_id)
+    
+    async def check_object_key_exists(self, object_type_id: UUID, object_key: str) -> bool:
+        return await self.repo.object_key_exists(self.tenant_id, object_type_id, object_key)
+    
+    async def create_object(self, obj: OntologyObject) -> OntologyObject:
+        return await self.repo.create_object(obj)
+    
+    async def list_objects_by_type(self, object_type_id: UUID) -> List[OntologyObject]:
+        return await self.repo.list_objects_by_type(self.tenant_id, object_type_id)
+    
+    async def get_object_type_names(self, type_ids: List[UUID]) -> Dict[UUID, str]:
+        return await self.repo.get_object_type_names(type_ids)
+    
+    async def update_object(
+        self,
+        object_id: UUID,
+        object_key: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        status: Optional[str] = None,
+    ) -> Optional[OntologyObject]:
+        return await self.repo.update_object(
+            self.tenant_id, object_id,
+            object_key=object_key,
+            properties=properties,
+            status=status,
+        )
+    
+    # ------------------------------------------------------------------
     # LinkType
     # ------------------------------------------------------------------
     
@@ -89,6 +139,31 @@ class OntologyService:
     
     async def list_link_types(self) -> List[OntologyLinkType]:
         return await self.repo.list_link_types(self.tenant_id)
+
+    async def list_link_types_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[List[OntologyLinkType], int]:
+        items = await self.repo.list_link_types_paginated(self.tenant_id, limit, offset)
+        total = await self.repo.count_link_types(self.tenant_id)
+        return items, total
+    
+    # ------------------------------------------------------------------
+    # OntologyLink (instance)
+    # ------------------------------------------------------------------
+    
+    async def get_link(self, link_id: UUID) -> Optional[OntologyLink]:
+        return await self.repo.get_link(self.tenant_id, link_id)
+    
+    async def delete_link(self, link_id: UUID) -> bool:
+        return await self.repo.delete_link(self.tenant_id, link_id)
+    
+    async def list_object_links(self, object_id: UUID) -> List[OntologyLink]:
+        return await self.repo.list_object_links(self.tenant_id, object_id)
+    
+    async def get_link_type_names(self, link_type_ids: List[UUID]) -> Dict[UUID, str]:
+        return await self.repo.get_link_type_names(link_type_ids)
     
     # ------------------------------------------------------------------
     # Interface
@@ -99,7 +174,96 @@ class OntologyService:
     
     async def list_interfaces(self) -> List[OntologyInterface]:
         return await self.repo.list_interfaces(self.tenant_id)
-    
+
+    async def list_interfaces_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[List[OntologyInterface], int]:
+        items = await self.repo.list_interfaces_paginated(self.tenant_id, limit, offset)
+        total = await self.repo.count_interfaces(self.tenant_id)
+        return items, total
+
+    async def create_interface(self, data: Dict[str, Any]) -> OntologyInterface:
+        iface = OntologyInterface(tenant_id=self.tenant_id, **data)
+        return await self.repo.create_interface(iface)
+
+    async def update_interface(
+        self,
+        interface_id: UUID,
+        updates: Dict[str, Any],
+    ) -> Optional[OntologyInterface]:
+        return await self.repo.update_interface(self.tenant_id, interface_id, **updates)
+
+    async def delete_interface(self, interface_id: UUID) -> bool:
+        return await self.repo.delete_interface(self.tenant_id, interface_id)
+
+    # ------------------------------------------------------------------
+    # ActionType
+    # ------------------------------------------------------------------
+
+    async def get_action_type(self, action_type_id: UUID) -> Optional[OntologyActionType]:
+        return await self.repo.get_action_type(self.tenant_id, action_type_id)
+
+    async def list_action_types(self) -> List[OntologyActionType]:
+        return await self.repo.list_action_types(self.tenant_id)
+
+    async def list_action_types_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[List[OntologyActionType], int]:
+        items = await self.repo.list_action_types_paginated(self.tenant_id, limit, offset)
+        total = await self.repo.count_action_types(self.tenant_id)
+        return items, total
+
+    async def create_action_type(self, data: Dict[str, Any]) -> OntologyActionType:
+        at = OntologyActionType(tenant_id=self.tenant_id, **data)
+        return await self.repo.create_action_type(at)
+
+    async def update_action_type(
+        self,
+        action_type_id: UUID,
+        updates: Dict[str, Any],
+    ) -> Optional[OntologyActionType]:
+        return await self.repo.update_action_type(self.tenant_id, action_type_id, **updates)
+
+    async def delete_action_type(self, action_type_id: UUID) -> bool:
+        return await self.repo.delete_action_type(self.tenant_id, action_type_id)
+
+    # ------------------------------------------------------------------
+    # Function
+    # ------------------------------------------------------------------
+
+    async def get_function(self, function_id: UUID) -> Optional[OntologyFunction]:
+        return await self.repo.get_function(self.tenant_id, function_id)
+
+    async def list_functions(self) -> List[OntologyFunction]:
+        return await self.repo.list_functions(self.tenant_id)
+
+    async def list_functions_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[List[OntologyFunction], int]:
+        items = await self.repo.list_functions_paginated(self.tenant_id, limit, offset)
+        total = await self.repo.count_functions(self.tenant_id)
+        return items, total
+
+    async def create_function(self, data: Dict[str, Any]) -> OntologyFunction:
+        fn = OntologyFunction(tenant_id=self.tenant_id, **data)
+        return await self.repo.create_function(fn)
+
+    async def update_function(
+        self,
+        function_id: UUID,
+        updates: Dict[str, Any],
+    ) -> Optional[OntologyFunction]:
+        return await self.repo.update_function(self.tenant_id, function_id, **updates)
+
+    async def delete_function(self, function_id: UUID) -> bool:
+        return await self.repo.delete_function(self.tenant_id, function_id)
+
     # ------------------------------------------------------------------
     # DAG / Dependency
     # ------------------------------------------------------------------
