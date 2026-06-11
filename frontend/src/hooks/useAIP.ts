@@ -9,6 +9,9 @@ import type {
   RAGQueryResponse,
   LLMCallLog,
   GuardrailsLog,
+  AgentRunRequest,
+  AgentRunResponse,
+  AgentDefinition,
 } from '../types/aip'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
@@ -168,6 +171,61 @@ export function useGuardrailsLogs() {
         headers: getAuthHeaders(token),
       })
       return handleResponse<GuardrailsLog[]>(response)
+    },
+  })
+}
+
+export function useAgentList() {
+  const { token } = useAuth()
+  return useQuery<AgentDefinition[]>({
+    queryKey: ['agents'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/aip/agents`, {
+        headers: getAuthHeaders(token),
+      })
+      const data = await handleResponse<{ agents: AgentDefinition[] }>(response)
+      return data.agents
+    },
+    staleTime: 60000,
+  })
+}
+
+export function useAgentRun() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (request: AgentRunRequest & { agentId: string }) => {
+      const { agentId, ...body } = request
+      const response = await fetch(`${API_BASE_URL}/aip/agents/${agentId}/run`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(body),
+      })
+      return handleResponse<AgentRunResponse>(response)
+    },
+  })
+}
+
+export function useAgentStatus() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async ({ agentId, traceId }: { agentId: string; traceId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/aip/agents/${agentId}/status?trace_id=${traceId}`, {
+        headers: getAuthHeaders(token),
+      })
+      return handleResponse<AgentRunResponse>(response)
+    },
+  })
+}
+
+export function useAgentInterrupt() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async ({ agentId, traceId }: { agentId: string; traceId: string }) => {
+      const response = await fetch(`${API_BASE_URL}/aip/agents/${agentId}/interrupt?trace_id=${traceId}`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+      })
+      return handleResponse<AgentRunResponse>(response)
     },
   })
 }

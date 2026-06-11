@@ -245,37 +245,112 @@ async def rag_query(
 
 
 # ---------------------------------------------------------------------------
-# Agents (placeholder)
+# Agents
 # ---------------------------------------------------------------------------
 
-@router.get("/agents/{id}/status", response_model=AgentRunResponse)
-async def get_agent_status(id: UUID):
-    """Get agent run status."""
-    return AgentRunResponse(
-        output="",
-        status="completed",
-        trace_id=str(id),
+_agents_initialized = False
+
+
+def _ensure_agents_initialized():
+    """Lazy initialize agent registry with default agents."""
+    global _agents_initialized
+    if _agents_initialized:
+        return
+    try:
+        agent_registry.create_default_agents()
+        _agents_initialized = True
+        logger.info("Agent registry initialized with %d agents", len(agent_registry.list_all()))
+    except Exception as e:
+        logger.warning(f"Agent registry init skipped: {e}")
+
+
+@router.get("/agents", response_model=AgentListResponse)
+async def list_agents():
+    """List available agents."""
+    _ensure_agents_initialized()
+    agents = agent_registry.list_all()
+    return AgentListResponse(
+        agents=[
+            AgentDefinitionSchema(
+                id=a.agent_id,
+                name=a.name,
+                workflow_mode=a.workflow_mode,
+                model=a.model,
+            )
+            for a in agents
+        ]
     )
 
 
 @router.post("/agents/{id}/run", response_model=AgentRunResponse)
-async def run_agent(id: UUID):
-    """Run an agent."""
+async def run_agent(
+    id: UUID,
+    data: AgentRunRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run an agent with user input."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    _ensure_agents_initialized()
+
+    definition = agent_registry.get(id)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Agent {id} not found")
+
+    engine = AgentEngine(db=db, tenant_id=tenant_id, definition=definition)
+
+    session = None
+    if data.session_id:
+        session = AgentSession(session_id=data.session_id, agent_id=id, tenant_id=tenant_id)
+
+    result = await engine.run(user_input=data.input, session=session, context=data.context)
+
     return AgentRunResponse(
-        output="Agent execution is not yet implemented.",
-        status="completed",
-        trace_id=str(id),
+        output=result["output"],
+        status=result["status"],
+        trace_id=result["trace_id"],
+        steps=[AgentStep(
+            type=s.get("type", "unknown"),
+            thought=s.get("thought"),
+            content=s.get("content"),
+            tool_calls=s.get("tool_calls"),
+            duration_ms=s.get("duration_ms"),
+        ) for s in result.get("steps", [])],
+        session_id=data.session_id or UUID(result["trace_id"]),
     )
+
+
+@router.get("/agents/{id}/status", response_model=AgentRunResponse)
+async def get_agent_status(
+    id: UUID,
+    request: Request,
+    trace_id: str = Query(..., description="Agent run trace ID"),
+):
+    """Get agent run status by trace ID."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    _ensure_agents_initialized()
+    session = AgentSession(session_id=UUID(trace_id), agent_id=id, tenant_id=tenant_id)
+    found = await session.load()
+    if not found:
+        return AgentRunResponse(output="", status="not_found", trace_id=trace_id)
+    return AgentRunResponse(output=session.get_output(), status=session.get_status(), trace_id=trace_id)
 
 
 @router.post("/agents/{id}/interrupt", response_model=AgentRunResponse)
-async def interrupt_agent(id: UUID):
+async def interrupt_agent(
+    id: UUID,
+    request: Request,
+    trace_id: str = Query(..., description="Agent run trace ID"),
+):
     """Interrupt a running agent."""
-    return AgentRunResponse(
-        output="Agent interrupted.",
-        status="interrupted",
-        trace_id=str(id),
-    )
+    tenant_id = getattr(request.state, "tenant_id", None)
+    _ensure_agents_initialized()
+    session = AgentSession(session_id=UUID(trace_id), agent_id=id, tenant_id=tenant_id)
+    await session.load()
+    session.set_status("interrupted")
+    session.set_output("Agent interrupted by user.")
+    await session.save()
+    return AgentRunResponse(output="Agent interrupted.", status="interrupted", trace_id=trace_id)
 
 
 # ---------------------------------------------------------------------------

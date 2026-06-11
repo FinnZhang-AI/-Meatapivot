@@ -53,16 +53,38 @@ export interface RAGQueryResponse {
   model: string
 }
 
+export interface AgentStep {
+  type: string
+  thought?: string
+  content?: string
+  toolCalls?: Array<{
+    tool: string
+    args: Record<string, any>
+    result: string
+  }>
+  durationMs?: number
+  error?: string
+}
+
+export interface AgentDefinition {
+  id: string
+  name: string
+  workflowMode: string
+  model: string
+}
+
 export interface AgentRunRequest {
   input: string
   context?: Record<string, any>
+  sessionId?: string
 }
 
 export interface AgentRunResponse {
   output: string
-  status: 'running' | 'completed' | 'failed' | 'interrupted'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted' | 'not_found'
   traceId: string
-  error?: string
+  steps?: AgentStep[]
+  sessionId?: string
 }
 
 export interface GuardrailsLog {
