@@ -9,7 +9,12 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "Meatapivot"
-    APP_VERSION: str = "2.2.0"
+
+    @property
+    def APP_VERSION(self) -> str:
+        # Single source of truth: app.__init__.__version__
+        from app import __version__
+        return __version__
     # SECURITY: DEBUG must be set to False in production
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"

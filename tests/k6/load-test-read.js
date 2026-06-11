@@ -27,60 +27,81 @@ export default function (data) {
   const token = data.token;
 
   // 1. List object types (most common)
-  const res1 = authGet(http, token, '/ontology/object-types?page=1&page_size=20');
+  const res1 = http.get(`${BASE_URL}${API_PREFIX}/ontology/object-types?page=1&page_size=20`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_object_types' },
+  });
   check(res1, {
     'object-types status 200': (r) => r.status === 200,
     'object-types p95 < 500ms': (r) => r.timings.duration < 500,
   }) || console.error(`object-types failed: ${res1.status}`);
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);  // 50–200 ms jitter
 
   // 2. Get dashboard stats
-  const res2 = authGet(http, token, '/ontology/stats');
+  const res2 = http.get(`${BASE_URL}${API_PREFIX}/ontology/stats`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'dashboard_stats' },
+  });
   check(res2, {
     'stats status 200': (r) => r.status === 200,
     'stats has counts': (r) => r.body && r.body.includes('object_type_count'),
   });
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);
 
   // 3. List link types
-  const res3 = authGet(http, token, '/ontology/link-types?page=1&page_size=20');
+  const res3 = http.get(`${BASE_URL}${API_PREFIX}/ontology/link-types?page=1&page_size=20`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_link_types' },
+  });
   check(res3, {
     'link-types status 200': (r) => r.status === 200,
   });
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);
 
   // 4. List interfaces
-  const res4 = authGet(http, token, '/ontology/interfaces?page=1&page_size=20');
+  const res4 = http.get(`${BASE_URL}${API_PREFIX}/ontology/interfaces?page=1&page_size=20`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_interfaces' },
+  });
   check(res4, {
     'interfaces status 200': (r) => r.status === 200,
   });
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);
 
   // 5. List action types
-  const res5 = authGet(http, token, '/ontology/action-types?page=1&page_size=20');
+  const res5 = http.get(`${BASE_URL}${API_PREFIX}/ontology/action-types?page=1&page_size=20`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_action_types' },
+  });
   check(res5, {
     'action-types status 200': (r) => r.status === 200,
   });
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);
 
   // 6. List functions
-  const res6 = authGet(http, token, '/ontology/functions?page=1&page_size=20');
+  const res6 = http.get(`${BASE_URL}${API_PREFIX}/ontology/functions?page=1&page_size=20`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_functions' },
+  });
   check(res6, {
     'functions status 200': (r) => r.status === 200,
   });
 
-  sleep(0.1);
+  sleep(Math.random() * 0.15 + 0.05);
 
   // 7. Get compile logs
-  const res7 = authGet(http, token, '/ontology/compile/logs?limit=10');
+  const res7 = http.get(`${BASE_URL}${API_PREFIX}/ontology/compile/logs?limit=10`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    tags: { endpoint: 'list_compile_logs' },
+  });
   check(res7, {
     'compile-logs status 200': (r) => r.status === 200,
   });
 
-  sleep(0.5);
+  sleep(Math.random() * 0.4 + 0.1);  // 100–500 ms jitter
 }
