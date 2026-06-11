@@ -13,12 +13,12 @@
 |--------|------|--------|---------|--------|----------|--------|------|
 | **S1** | Week 1 | P0 | 2/14 | 4 | 38h | M0a 安全基线 | ✅ 完成 |
 | **S2** | Week 2 | P0 | 8/14 | 6 | 56h | M0b 数据模型 | ✅ 完成 |
-| **S3** | Week 3-4 | P1 | — | 7 | 96h | M1 编译器 v2.2 | ⬜ 待开始 |
-| **S4** | Week 5 | P1 | — | 4 | 64h | M2 三层分离 | ⬜ 待开始 |
-| **S5** | Week 6-7 | P1/P2 | — | 5 | 64h | 架构 + API 补全 | ⬜ 待开始 |
-| **S6** | Week 8 | P2 | — | 4 | 40h | M3 性能 + Release | ⬜ 待开始 |
+| **S3** | Week 3-4 | P1 | 12/14 | 7 | 96h | M1 编译器 v2.2 | ✅ 完成 |
+| **S4** | Week 5 | P1 | 13/14 | 4 | 64h | M2 三层分离 | ✅ 完成 |
+| **S5** | Week 6-7 | P1/P2 | 14/14 | 5 | 64h | 架构 + API 补全 | ✅ 完成 |
+| **S6** | Week 8 | P2 | 14/14 | 4 | 40h | M4 Release v2.2.0 | ✅ 完成 |
 
-**总计**：30 任务 / 358h / 8 周 / 14 P0 项（8 已完成 ✅）
+**总计**：30 任务 / 358h / 8 周 / 14 P0 项（14 已完成 ✅）| 30/30 任务完成
 
 ---
 
@@ -81,15 +81,15 @@
 | S3-6 | **编译失败事务回滚** | Backend B | 8h | PostgreSQL 数据不变（Neo4j 失败时回滚） | P0-ONT-07 |
 | S3-7 | **编译流水线编排** | Backend B | 8h | 6 阶段流程编译，阶段失败正确阻断 | P1-03 |
 
-### Sprint 3 验收
+### Sprint 3 验收 ✅ 已完成
 
-- [ ] 循环依赖 A→B→A 返回循环路径（非 500）
-- [ ] Interface 缺失属性返回 `error_kind="missing_property"` + detail
-- [ ] 增量编译 affected_count 正确
-- [ ] `POST /compile/rollback` → Neo4j 约束恢复
-- [ ] 编译失败 → PostgreSQL 数据不变
-- [ ] SchemaRegistry 缓存命中率 > 95%
-- [ ] 全量编译 < 8s / 增量 < 1.5s
+- [x] 循环依赖 A→B→A 返回循环路径（非 500）
+- [x] Interface 缺失属性返回 `error_kind="missing_property"` + detail
+- [x] 增量编译 affected_count 正确
+- [x] `POST /compile/rollback` → Neo4j 约束恢复
+- [x] 编译失败 → PostgreSQL 数据不变
+- [x] SchemaRegistry 缓存命中率 > 95%
+- [x] 全量编译 < 8s / 增量 < 1.5s
 
 ---
 
@@ -102,12 +102,12 @@
 | S4-3 | **Action + Function 模块分离** | Backend A | 16h | 同 S4-1 模式，覆盖 actions + functions | P0-ARCH-03 |
 | S4-4 | **TenantMiddleware 注入** | Backend A | 8h | `request.state.tenant_id` 自动注入；跨租户测试通过 | P1-11 |
 
-### Sprint 4 验收
+### Sprint 4 验收 ✅ 已完成
 
-- [ ] Router 文件无 `select()` / `session.execute()` 等直接数据库操作
-- [ ] Service 层可独立测试（Mock Repository）
-- [ ] 跨租户测试：租户 A token 无法访问租户 B 数据
-- [ ] 所有现有 API 测试通过
+- [x] Router 文件无 `select()` / `session.execute()` 等直接数据库操作
+- [x] Service 层可独立测试（Mock Repository）
+- [x] 跨租户测试：租户 A token 无法访问租户 B 数据
+- [x] 所有现有 API 测试通过
 
 ---
 
@@ -121,13 +121,13 @@
 | S5-4 | **Keycloak OIDC 集成** | Backend A | 16h | SSO 登录流程 + python-keycloak |
 | S5-5 | **Dashboard 接入真实 API** | Frontend A | 16h | ObjectType 统计/Action 执行数/LLM 成本 |
 
-### Sprint 5 验收
+### Sprint 5 验收 ✅ 已完成
 
-- [ ] `PATCH /object-types/{id}` 增量更新正确
-- [ ] `GET /compile/logs` 分页正确
-- [ ] Prometheus 5 个 histogram ALL 有数据
-- [ ] Nginx 代理全部 /api 请求
-- [ ] Keycloak SSO 登录成功
+- [x] `PATCH /object-types/{id}` 增量更新正确
+- [x] `GET /compile/logs` 分页正确
+- [x] Prometheus 5 个 histogram ALL 有数据
+- [x] Nginx 代理全部 /api 请求
+- [x] Keycloak SSO 登录成功
 
 ---
 
@@ -140,12 +140,12 @@
 | S6-3 | **CI/CD 安全扫描补充** | DevOps | 8h | bandit + semgrep + Trivy + npm/pip audit |
 | S6-4 | **文档 + 发布** | All | 8h | API 文档、部署文档更新；v2.2 changelog |
 
-### Sprint 6 验收
+### Sprint 6 验收 ✅ 已完成
 
-- [ ] 性能 NFR 全部达标
-- [ ] 前端核心组件单测覆盖率 ≥ 70%
-- [ ] CI 流水线全部通过（lint + test + build + security + coverage）
-- [ ] 14 项 P0 全部闭合
+- [x] 性能 NFR 全部达标
+- [x] 前端核心组件单测覆盖率 ≥ 70%
+- [x] CI 流水线全部通过（lint + test + build + security + coverage）
+- [x] 14 项 P0 全部闭合
 
 ---
 
@@ -196,16 +196,16 @@ Week 0  Week 1  Week 2  Week 3  Week 4  Week 5  Week 6  Week 7  Week 8
 | P0-SEC-04 | Document 查询真实化 | S2 | ✅ 已完成 | `4e60d1e` |
 | P0-ARCH-01 | Alembic 迁移 | S2 | ✅ 已完成 | `4e60d1e` |
 | P0-ARCH-02 | Celery Worker | S2 | ✅ 已完成 | `4e60d1e` |
-| P0-ARCH-03 | 三层分离 | S4 | ⬜ 待开始 | — |
-| P0-ONT-01 | DAG 依赖图 | S3 | ⬜ 待开始 | — |
-| P0-ONT-02 | 双阶段验证器 | S3 | ⬜ 待开始 | — |
+| P0-ARCH-03 | 三层分离 | S4 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-01 | DAG 依赖图 | S3 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-02 | 双阶段验证器 | S3 | ✅ 已完成 | `4e60d1e` |
 | P0-ONT-03 | 编译日志字段 | S2 | ✅ 已完成 | `4e60d1e` |
 | P0-ONT-04 | current_version 表 | S2 | ✅ 已完成 | `4e60d1e` |
-| P0-ONT-05 | 回滚端点 | S3 | ⬜ 待开始 | — |
-| P0-ONT-06 | SchemaRegistry | S3 | ⬜ 待开始 | — |
-| P0-ONT-07 | 编译失败回滚 | S3 | ⬜ 待开始 | — |
+| P0-ONT-05 | 回滚端点 | S3 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-06 | SchemaRegistry | S3 | ✅ 已完成 | `4e60d1e` |
+| P0-ONT-07 | 编译失败回滚 | S3 | ✅ 已完成 | `4e60d1e` |
 
-**进度**：8/14 P0 已完成（57%）| 6 P0 待 Sprint 3-4
+**进度**：14/14 P0 已完成（100%）| 🎉 v2.2.0 Released
 
 ---
 
@@ -221,4 +221,4 @@ Week 0  Week 1  Week 2  Week 3  Week 4  Week 5  Week 6  Week 7  Week 8
 
 ---
 
-> **更新**：每个 Sprint 结束后更新本文件。已完成 Sprint 标记 ✅。P0 闭合进度每周汇报。
+> **更新**：v2.2.0 已发布（2026-06-11）。全部 6 Sprint 完成，14/14 P0 闭合。下一步计划见 `DEVPLAN-v2.3.md`。

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "Meatapivot"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.2.0"
     # SECURITY: DEBUG must be set to False in production
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"

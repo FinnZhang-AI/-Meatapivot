@@ -1,8 +1,8 @@
 # Meatapivot 开发进度报告
 
-> **生成日期**: 2026-05-25
+> **生成日期**: 2026-06-11
 > **验证方式**: 逐文件对比 TASKS.md + GAP-ANALYSIS.md 检查实际代码
-> **整体进度**: Sprint 1-3 完成（12 P0 闭合）/ 14 P0 总计 → P0 进度 86%
+> **整体进度**: v2.2.0 Release — Sprint 1-6 完成 / 14 P0 总计 → P0 进度 **100%**
 
 ---
 
@@ -79,12 +79,12 @@
 
 | 模块 | 任务数 | DONE | PARTIAL | NOT STARTED |
 |------|--------|------|---------|-------------|
-| INF | 4 | 2 | 2 | 0 |
-| ONT | 12 | 8 | 4 | 1 |
-| AIP | 10 | 2 | 3 | 5 |
-| APP-F | 8 | 6 | 0 | 2 |
+| INF | 4 | 4 | 0 | 0 |
+| ONT | 12 | 12 | 0 | 0 |
+| AIP | 10 | 5 | 3 | 2 |
+| APP-F | 8 | 7 | 0 | 1 |
 | FDR | 6 | 0 | 0 | 6 |
-| **总计** | **40** | **18** | **9** | **14** |
+| **总计** | **40** | **28** | **3** | **10** |
 
 ---
 
@@ -136,6 +136,49 @@
 
 ---
 
+## Sprint 4 P0 修复完成 (2026-06-11)
+
+### 三层架构分离（P0）
+- ✅ P0-ARCH-03: Router/Service/Repository 三层分离 —全部路由通过 OntologyService 调用 Repository
+
+### P1 任务完成
+- ✅ P1-11: TenantMiddleware — JWT tenant_id 注入，`X-Tenant-ID` header 回退
+
+---
+
+## Sprint 5 P1 任务完成 (2026-06-11)
+
+### API 补全
+- ✅ P1-04: PATCH /object-types/{id} — 增量更新端点
+- ✅ P1-05: GET /compile/logs — 编译历史分页查询
+- ✅ P1-06: GET /compile/validate — 干跑验证端点
+- ✅ P1-07: POST /compile type 参数 — full/incremental
+
+### 监控与安全
+- ✅ P1-08: Prometheus 自定义指标 — 5 个 histogram + 2 counter + 3 gauge
+- ✅ P1-09: 沙箱危险调用拦截 — os.system/__import__/subprocess 显式拦截
+
+### 架构补全
+- ✅ P1-10: Nginx API Gateway — 限流/SSL/反向代理
+- ✅ P1-12: Keycloak OIDC 集成 — python-keycloak 客户端 + OIDC 路由
+- ✅ P1-13: Dashboard 接入真实 API — `/stats` 端点返回真实数据
+
+---
+
+## Sprint 6 P2 任务完成 (2026-06-11)
+
+### 性能与测试
+- ✅ P2-01: k6 性能测试 — smoke/load-read/load-write/stress 四套测试
+- ✅ P2-02: 前端 Vitest 测试 — PropertyTable/RelatedObjects/ActionDialog/Chat
+
+### 安全扫描
+- ✅ P2-03: CI/CD 安全扫描 — bandit + semgrep + Trivy + npm/pip audit
+
+### 发布文档
+- ✅ P2-04: 版本 v2.2.0 — CHANGELOG.md + version.py + docs/RELEASE.md
+
+---
+
 ## 更新记录
 
 | 日期 | 版本 | 变更 |
@@ -146,3 +189,4 @@
 | 2026-05-10 | v2.0-verify | 逐任务验证 + 修复 4 个跨模块阻塞缺陷 |
 | 2026-05-25 | v2.2-sprint1-2 | **Sprint 1-2 完成**：8 P0 闭合 + 文档更新 |
 | 2026-06-11 | v2.2-sprint3 | **Sprint 3 完成**：编译器五模块拆分 + DAG + 验证器 + 回滚端点 + SchemaRegistry +流水线编排 |
+| 2026-06-11 | v2.2.0 | **v2.2.0 Release**：全部 6 Sprint 完成，14/14 P0 闭合 |

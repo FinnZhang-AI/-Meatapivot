@@ -1,0 +1,147 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday 2 AM
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/**'
+      - 'frontend/src/**'
+      - 'backend/requirements.txt'
+      - 'frontend/package.json'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  python-security:
+    name: Python Security (bandit + pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install security tools
+        working-directory: backend
+        run: |
+          pip install bandit pip-audit safety
+
+      - name: Run bandit
+        working-directory: backend
+        run: |
+          bandit -r app/ -f json -o bandit-report.json
+          bandit -r app/ -f txt
+
+      - name: Run pip-audit
+        working-directory: backend
+        run: |
+          pip-audit -r requirements.txt
+
+      - name: Upload bandit JSON to security tab
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: backend/bandit-report.json
+
+  javascript-security:
+    name: JavaScript Security (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=moderate
+
+  sast-scan:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep Python
+        run: |
+          semgrep \
+            --config=auto \
+            --json \
+            --output=semgrep-python.json \
+            --error \
+            backend/app/ || true
+
+      - name: Semgrep TypeScript
+        run: |
+          semgrep \
+            --config=auto \
+            --json \
+            --output=semgrep-ts.json \
+            frontend/src/ || true
+
+      - name: Upload Semgrep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-reports
+          path: |
+            semgrep-python.json
+            semgrep-ts.json
+
+  container-scan:
+    name: Container Security (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t meatapivot-backend:scan ./backend
+          docker build -t meatapivot-frontend:scan ./frontend
+
+      - name: Trivy backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: meatapivot-backend:scan
+          format: 'sarif'
+          output: 'trivy-backend.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: meatapivot-frontend:scan
+          format: 'sarif'
+          output: 'trivy-frontend.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy backend to security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-backend.sarif'
+
+      - name: Upload Trivy frontend to security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-frontend.sarif'

@@ -1,0 +1,32 @@
+name: Performance Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 0'  # Weekly on Sunday 4 AM
+
+jobs:
+  k6-smoke:
+    name: k6 Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6 smoke test
+        run: |
+          docker run --rm -v $(pwd):/workdir -w /workdir \
+            --network host \
+            grafana/k6:latest run tests/k6/smoke-test.js
+
+  k6-load:
+    name: k6 Load Test (100 VU)
+    runs-on: ubuntu-latest
+    needs: k6-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6 load test
+        run: |
+          docker run --rm -v $(pwd):/workdir -w /workdir \
+            --network host \
+            grafana/k6:latest run tests/k6/load-test-read.js
