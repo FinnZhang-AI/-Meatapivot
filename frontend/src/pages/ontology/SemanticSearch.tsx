@@ -9,6 +9,7 @@ const SEARCH_MODES = [
   { value: 'vector', label: '向量', desc: '语义相似度' },
   { value: 'graph', label: '图谱', desc: '关系邻居' },
   { value: 'keyword', label: '关键词', desc: '精确匹配' },
+  { value: 'rag', label: 'RAG', desc: 'LLM 问答 + 引用' },
 ]
 
 const SOURCE_BADGES: Record<string, { label: string; color: string }> = {
@@ -27,6 +28,11 @@ export default function SemanticSearch() {
   const [mode, setMode] = useState('hybrid')
   const [filterType, setFilterType] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
+  // S3-4: RAG mode result state — separate from ontology results so the
+  // original render path stays intact.
+  const [ragAnswer, setRagAnswer] = useState<{ answer: string; sources: Array<{ id?: string; title?: string; snippet?: string }> } | null>(null)
+  const [ragLoading, setRagLoading] = useState(false)
+  const [ragError, setRagError] = useState<string | null>(null)
 
   const { data: objectTypes } = useObjectTypes(tenantId)
   const searchMutation = useSearch()
@@ -55,6 +61,34 @@ export default function SemanticSearch() {
   const handleSearchInternal = async (q: string) => {
     if (!q.trim()) return
     setHasSearched(true)
+    if (mode === 'rag') {
+      // S3-4: RAG mode bypasses ontology search and asks the AIP gateway.
+      // The dedicated hook keeps the ontology results untouched.
+      setRagLoading(true)
+      setRagError(null)
+      try {
+        const res = await fetch(
+          `${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1')}/aip/rag/query`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: q.trim(), top_k: 5 }),
+          }
+        )
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        setRagAnswer({
+          answer: data.answer || data.message?.content || '',
+          sources: data.sources || [],
+        })
+      } catch (e) {
+        setRagError(e instanceof Error ? e.message : String(e))
+        setRagAnswer(null)
+      } finally {
+        setRagLoading(false)
+      }
+      return
+    }
     await searchMutation.mutateAsync({
       q: q.trim(),
       tenantId,
@@ -167,6 +201,51 @@ export default function SemanticSearch() {
             </>
           )}
           <span className="ml-auto">耗时 {meta.durationMs}ms</span>
+        </div>
+      )}
+
+      {/* S3-4: RAG mode result — renders above the ontology results path */}
+      {mode === 'rag' && hasSearched && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">
+            LLM Answer
+          </h3>
+          {ragLoading && <p className="text-sm text-slate-400">生成中…</p>}
+          {ragError && (
+            <p className="text-sm text-rose-500">RAG 调用失败：{ragError}</p>
+          )}
+          {ragAnswer && (
+            <>
+              <p className="text-sm text-slate-800 dark:text-slate-100 whitespace-pre-wrap">
+                {ragAnswer.answer || '（无回答）'}
+              </p>
+              {ragAnswer.sources.length > 0 && (
+                <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-3">
+                  <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">
+                    引用来源（{ragAnswer.sources.length}）
+                  </p>
+                  <ul className="space-y-1">
+                    {ragAnswer.sources.map((s, i) => (
+                      <li key={s.id || i} className="text-xs text-slate-600 dark:text-slate-300">
+                        [{i + 1}] {s.title || s.id || '来源'}
+                        {s.snippet ? ` — ${s.snippet.slice(0, 100)}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* S3-4: classification summary banner for non-RAG modes */}
+      {mode !== 'rag' && hasSearched && results.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+            Objects · {results.length}
+          </span>
+          <span className="text-slate-400">提示：切换到 RAG 模式可获得 LLM 答案 + 引用</span>
         </div>
       )}
 

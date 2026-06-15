@@ -1,6 +1,9 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { useInterfaceValidationWS } from '../hooks/useInterfaceValidationWS'
+import ValidationToaster from './ValidationToaster'
+import GlobalSearch from './GlobalSearch'
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -30,11 +33,30 @@ const Layout = () => {
     return null
   }
 
+  return <LayoutShell user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} searchQuery={searchQuery} setSearchQuery={setSearchQuery} location={location} logout={logout} />
+}
+
+interface LayoutShellProps {
+  user: ReturnType<typeof useAuth>['user']
+  sidebarOpen: boolean
+  setSidebarOpen: (v: boolean) => void
+  searchQuery: string
+  setSearchQuery: (v: string) => void
+  location: ReturnType<typeof useLocation>
+  logout: () => void
+}
+
+const LayoutShell = ({ user, sidebarOpen, setSidebarOpen, location, logout }: LayoutShellProps) => {
+  // S3-1: keep the interface validation WebSocket alive for the whole session
+  useInterfaceValidationWS(user?.tenant_id)
+
+
   const mainNavigation = [
     { name: '仪表盘', href: '/dashboard', icon: '📊' },
     { name: '知识图谱', href: '/knowledge-graph', icon: '🕸️' },
     { name: '文档管理', href: '/documents', icon: '📁' },
     { name: '决策流', href: '/decision-flow', icon: '⚙️' },
+    { name: 'Workshop', href: '/workshop', icon: '🛠️' },
     { name: '分析报表', href: '/analytics', icon: '📈' },
   ]
 
@@ -153,30 +175,10 @@ const Layout = () => {
             </button>
 
             <div className="flex items-center gap-4">
-              {/* Global Search */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (searchQuery.trim()) {
-                    navigate(`/ontology/search?q=${encodeURIComponent(searchQuery.trim())}`)
-                    setSearchQuery('')
-                  }
-                }}
-                className="hidden md:flex items-center"
-              >
-                <div className="relative">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="全局搜索..."
-                    className="pl-9 pr-4 py-2 w-64 text-sm border rounded-lg bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                  />
-                </div>
-              </form>
+              {/* Global Search — S3-4 upgrade */}
+              <div className="hidden md:block">
+                <GlobalSearch />
+              </div>
 
               <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer relative">
                 <svg className="w-6 h-6 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,6 +199,9 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* S3-1: live interface validation toast */}
+      <ValidationToaster />
     </div>
   )
 }

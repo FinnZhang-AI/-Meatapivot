@@ -204,6 +204,22 @@ try:
 except Exception as e:
     logger.warning(f"Prompts router not available: {e}")
 
+# WebSocket router (S3-1) — paths are absolute, not namespaced under /api/v1
+try:
+    from app.routers import ws as ws_router
+    app.include_router(ws_router.router)
+    logger.info("WebSocket router registered")
+except Exception as e:
+    logger.warning(f"WebSocket router not available: {e}")
+
+# Workshop router (S3-3)
+try:
+    from app.routers import workshop
+    app.include_router(workshop.router, prefix=f"{settings.API_PREFIX}/workshop", tags=["Workshop"])
+    logger.info("Workshop router registered")
+except Exception as e:
+    logger.warning(f"Workshop router not available: {e}")
+
 
 @app.get("/")
 @limiter.limit("60/minute")

@@ -167,3 +167,20 @@ COMMENT ON TABLE decision_flows IS 'Decision flow definitions (DAG)';
 COMMENT ON TABLE flow_executions IS 'Execution history of decision flows';
 COMMENT ON TABLE kg_entities IS 'Cached knowledge graph entities from Neo4j';
 COMMENT ON TABLE ontology_current_version IS 'Current active Ontology version per tenant';
+-- S3-3: Workshop app builder persistence
+CREATE TABLE IF NOT EXISTS workshop_apps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    graph JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workshop_apps_tenant ON workshop_apps(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_workshop_apps_status ON workshop_apps(tenant_id, status);
+
+COMMENT ON TABLE workshop_apps IS 'Workshop app builder layouts (S3-3) — React Flow graphs persisted as JSONB';

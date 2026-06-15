@@ -27,6 +27,10 @@ import RAGSearch from './pages/aip/RAGSearch'
 import AgentChat from './pages/aip/AgentChat'
 import PromptManager from './pages/aip/PromptManager'
 
+// Workshop Pages
+import WorkshopList from './pages/workshop/WorkshopList'
+import WorkshopEditor from './pages/workshop/WorkshopEditor'
+
 function App() {
   return (
     <AuthProvider>
@@ -58,6 +62,10 @@ function App() {
           <Route path="aip/rag" element={<RAGSearch />} />
           <Route path="aip/agents" element={<AgentChat />} />
           <Route path="aip/prompts" element={<PromptManager />} />
+
+          {/* Workshop Routes (S3-3) */}
+          <Route path="workshop" element={<WorkshopList />} />
+          <Route path="workshop/editor/:appId" element={<WorkshopEditor />} />
         </Route>
       </Routes>
     </AuthProvider>

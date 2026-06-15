@@ -1,6 +1,7 @@
 """AIP (AI Platform) API Router"""
 import json
 import logging
+from datetime import datetime, timedelta
 from typing import AsyncGenerator, Dict, Optional
 from uuid import UUID
 
@@ -25,6 +26,8 @@ from app.models.aip_schemas import (
     AgentStep,
     AgentSSEEvent,
     LLMCallLogResponse,
+    LLMUsageTrendResponse,
+    LLMUsageBucket,
     GuardrailsLogResponse,
     AvailableModelsResponse,
     ModelInfo,
@@ -592,6 +595,81 @@ async def list_llm_calls(
         )
         for log in items
     ]
+
+
+@router.get("/llm-calls/aggregate", response_model=LLMUsageTrendResponse)
+async def aggregate_llm_usage(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(24, ge=1, le=168),
+    group_by: str = Query("hour", pattern="^(hour|day)$"),
+):
+    """Aggregate LLM call volume/cost into time buckets for the dashboard trend chart."""
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+
+    bucket_seconds = 3600 if group_by == "hour" else 86400
+    bucket_count = hours if group_by == "hour" else max(1, hours // 24)
+
+    # Use PG date_trunc to bucket; (1.0 / bucket_seconds) keeps a numeric ratio
+    # that lets us pull the bucket start with to_timestamp.
+    epoch = func.extract("epoch", AIPLLMCall.created_at)
+    bucket_idx = func.floor(epoch / bucket_seconds).cast(type_=AIPLLMCall.id.type)
+    bucket_start = func.to_timestamp(bucket_idx * bucket_seconds)
+
+    rows = await db.execute(
+        select(
+            bucket_start.label("bucket"),
+            func.count().label("call_count"),
+            func.coalesce(func.sum(AIPLLMCall.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(AIPLLMCall.estimated_cost_cents), 0).label(
+                "estimated_cost_cents"
+            ),
+        )
+        .where(AIPLLMCall.tenant_id == tenant_id)
+        .where(AIPLLMCall.created_at >= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, hours))
+        .group_by("bucket")
+        .order_by("bucket")
+    )
+
+    seen: Dict[str, LLMUsageBucket] = {}
+    for row in rows:
+        # PG returns a datetime; normalize to ISO with minute precision so the
+        # frontend can group_by and chart axis stay stable.
+        bucket_dt = row.bucket
+        if hasattr(bucket_dt, "isoformat"):
+            bucket_key = bucket_dt.isoformat(timespec="minutes")
+        else:
+            bucket_key = str(bucket_dt)
+        seen[bucket_key] = LLMUsageBucket(
+            bucket=bucket_key,
+            call_count=int(row.call_count or 0),
+            total_tokens=int(row.total_tokens or 0),
+            estimated_cost_cents=int(row.estimated_cost_cents or 0),
+        )
+
+    # Fill empty trailing buckets so the chart shows the full window
+    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    buckets: List[LLMUsageBucket] = []
+    for offset in range(bucket_count - 1, -1, -1):
+        ts = now - timedelta(seconds=bucket_seconds * offset)
+        key = ts.isoformat(timespec="minutes")
+        buckets.append(
+            seen.get(
+                key,
+                LLMUsageBucket(
+                    bucket=key,
+                    call_count=0,
+                    total_tokens=0,
+                    estimated_cost_cents=0,
+                ),
+            )
+        )
+
+    return LLMUsageTrendResponse(
+        group_by=group_by,
+        hours=hours,
+        buckets=buckets,
+    )
 
 
 @router.get("/guardrails-logs", response_model=list[GuardrailsLogResponse])

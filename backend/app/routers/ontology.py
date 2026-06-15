@@ -57,6 +57,7 @@ from app.models.ontology_schemas import (
     OntologySearchRequest,
     OntologySearchResponse,
     DashboardStats,
+    ObjectTypeDistribution,
     RecentAction,
     ImportError,
     OntologyImportRequest,
@@ -701,6 +702,15 @@ async def create_interface(
         "status": "active",
     }
     iface = await service.create_interface(iface_data)
+
+    # S3-1: same async re-validation trigger as update
+    try:
+        from app.worker.tasks import validate_all_interfaces
+
+        validate_all_interfaces.delay(str(tenant_id))
+    except Exception as exc:  # pragma: no cover - degraded path
+        logger.warning(f"Failed to enqueue interface validation: {exc}")
+
     return InterfaceResponse(
         id=iface.id,
         tenant_id=iface.tenant_id,
@@ -788,6 +798,18 @@ async def update_interface(
     iface = await service.update_interface(id, **updates)
     if not iface:
         raise HTTPException(status_code=404, detail="Interface not found")
+
+    # S3-1: kick off async re-validation. The change might invalidate an
+    # existing ObjectType's compliance, so we re-check every active interface
+    # for the tenant. Result is published to Redis pub/sub and pushed to WS
+    # clients (see app.routers.ws).
+    try:
+        from app.worker.tasks import validate_all_interfaces
+
+        validate_all_interfaces.delay(str(tenant_id))
+    except Exception as exc:  # pragma: no cover - degraded path
+        logger.warning(f"Failed to enqueue interface validation: {exc}")
+
     return InterfaceResponse(
         id=iface.id,
         tenant_id=iface.tenant_id,
@@ -994,6 +1016,32 @@ async def execute_action(
     )
     FUNCTION_EXEC_DURATION.observe(time.time() - start)
     return result
+
+
+@router.get("/actions/policies")
+async def list_action_policies():
+    """Enumerate the active OPA policy rules for the action gateway.
+
+    S3-2: lets the admin UI show which rules are loaded and lets tests assert
+    that the bundle is present. The actual evaluation happens inside
+    ActionExecutor; this endpoint is read-only.
+    """
+    from app.services.opa_client import opa_client
+
+    return {
+        "rules": [
+            {"name": name, "description": _POLICY_DESCRIPTIONS.get(name, "")}
+            for name in opa_client.rule_names()
+        ],
+        "count": len(opa_client.rule_names()),
+    }
+
+
+_POLICY_DESCRIPTIONS = {
+    "tenant_isolation": "Rejects actions whose tenant_id does not match the caller's tenant.",
+    "forbidden_parameters": "Disallows dangerous action names from running at all (e.g. system.drop_database).",
+    "max_parameters": "Rejects actions that pass more than 32 parameters to prevent runaway calls.",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -1291,6 +1339,26 @@ async def get_dashboard_stats(
     )
     recent_logs = recent_logs_result.scalars().all()
 
+    # Object type instance distribution for the dashboard pie chart
+    distribution_result = await db.execute(
+        select(OntologyObjectType.name, func.count(OntologyObject.id))
+        .select_from(OntologyObjectType)
+        .outerjoin(
+            OntologyObject,
+            (OntologyObject.object_type_id == OntologyObjectType.id)
+            & (OntologyObject.status != "archived"),
+        )
+        .where(OntologyObjectType.tenant_id == tenant_id)
+        .where(OntologyObjectType.status != "archived")
+        .group_by(OntologyObjectType.name)
+        .order_by(func.count(OntologyObject.id).desc())
+        .limit(8)
+    )
+    object_type_distribution = [
+        ObjectTypeDistribution(name=row[0], instance_count=row[1] or 0)
+        for row in distribution_result.all()
+    ]
+
     # Fetch action type names and object keys for recent logs
     action_type_ids = {log.action_type_id for log in recent_logs if log.action_type_id}
     object_ids = {log.target_object_id for log in recent_logs if log.target_object_id}
@@ -1334,6 +1402,7 @@ async def get_dashboard_stats(
         function_count=function_count or 0,
         action_execution_count=action_execution_count or 0,
         recent_actions=recent_actions,
+        object_type_distribution=object_type_distribution,
     )
 
 
@@ -1357,6 +1426,79 @@ async def search_ontology(
         top_k=data.top_k or 20,
     )
     return result
+
+
+@router.get("/search/suggest")
+async def search_suggest(
+    request: Request,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(8, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    """S3-4 autocomplete suggestions: prefix matches on ObjectType names
+    and Document titles, scoped to the caller's tenant.
+
+    Returns up to ``limit`` mixed results. Kept simple — no ML ranking.
+    Frontend uses this to drive the global search box autocomplete.
+    """
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    pattern = f"%{q}%"
+
+    # Object type name match
+    from app.models.ontology_models import OntologyObjectType
+    ot_result = await db.execute(
+        select(OntologyObjectType.id, OntologyObjectType.name, OntologyObjectType.display_name)
+        .where(
+            OntologyObjectType.tenant_id == tenant_id,
+            OntologyObjectType.status != "archived",
+            OntologyObjectType.name.ilike(pattern),
+        )
+        .order_by(OntologyObjectType.name.asc())
+        .limit(limit)
+    )
+    object_types = [
+        {
+            "kind": "object_type",
+            "id": str(row[0]),
+            "label": row[1],
+            "hint": row[2] or row[1],
+        }
+        for row in ot_result.all()
+    ]
+
+    # Document title match — Document model lives in database_models and the
+    # documents router does its own per-user filtering; for suggest we just
+    # need a fast tenant-scoped title search. Documents are tenant-shared,
+    # so the prefix match is safe to expose across users in the same tenant.
+    from app.models.database_models import Document
+
+    remaining = max(0, limit - len(object_types))
+    docs: list[dict] = []
+    if remaining > 0:
+        doc_result = await db.execute(
+            select(Document.id, Document.original_name, Document.document_type)
+            .where(
+                Document.tenant_id == tenant_id,
+                Document.original_name.ilike(pattern),
+            )
+            .order_by(Document.created_at.desc())
+            .limit(remaining)
+        )
+        docs = [
+            {
+                "kind": "document",
+                "id": str(row[0]),
+                "label": row[1],
+                "hint": row[2] or "Document",
+            }
+            for row in doc_result.all()
+        ]
+
+    return {
+        "query": q,
+        "suggestions": object_types + docs,
+        "count": len(object_types) + len(docs),
+    }
 
 
 # ---------------------------------------------------------------------------

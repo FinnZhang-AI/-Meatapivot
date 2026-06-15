@@ -14,6 +14,8 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 
+export { API_BASE_URL, getAuthHeaders, handleResponse }
+
 function getAuthHeaders(token: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -391,6 +393,22 @@ export function useDashboardStats(tenantId: string) {
         { headers: getAuthHeaders(token) }
       )
       return handleResponse<DashboardStats>(response)
+    },
+    enabled: !!tenantId,
+    refetchInterval: 30000,
+  })
+}
+
+export function useLLMUsageTrend(tenantId: string, hours: number = 24) {
+  const { token } = useAuth()
+  return useQuery<import('../types/ontology').LLMUsageTrend>({
+    queryKey: ['llmUsageTrend', tenantId, hours],
+    queryFn: async () => {
+      const response = await fetch(
+        `${API_BASE_URL}/aip/llm-calls/aggregate?hours=${hours}&group_by=hour&tenant_id=${encodeURIComponent(tenantId)}`,
+        { headers: getAuthHeaders(token) }
+      )
+      return handleResponse<import('../types/ontology').LLMUsageTrend>(response)
     },
     enabled: !!tenantId,
     refetchInterval: 30000,

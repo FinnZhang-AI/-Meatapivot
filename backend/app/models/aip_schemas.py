@@ -204,6 +204,21 @@ class LLMCallLogResponse(BaseModel):
     status: str
 
 
+class LLMUsageBucket(BaseModel):
+    """One time-window bucket for LLM usage trend."""
+
+    bucket: str  # ISO timestamp string, e.g. "2026-06-15T22:00:00"
+    call_count: int
+    total_tokens: int
+    estimated_cost_cents: int
+
+
+class LLMUsageTrendResponse(BaseModel):
+    group_by: str
+    hours: int
+    buckets: List[LLMUsageBucket]
+
+
 class AvailableModelsResponse(BaseModel):
     models: List["ModelInfo"]
 

@@ -198,6 +198,81 @@ class OntologyService:
     async def delete_interface(self, interface_id: UUID) -> bool:
         return await self.repo.delete_interface(self.tenant_id, interface_id)
 
+    async def validate_all_interfaces(self) -> Dict[str, Any]:
+        """Validate every active Interface and report per-ObjectType compliance.
+
+        Returns a dict with:
+          - ``status`` — "completed"
+          - ``interfaces_total`` / ``interfaces_failed``
+          - ``results`` — list of {interface_id, interface_name, total, passed, failed, details}
+        """
+        interfaces = await self.repo.list_interfaces(self.tenant_id)
+        object_types = await self.repo.list_object_types(self.tenant_id, status="active")
+        link_types = await self.repo.list_link_types(self.tenant_id)
+
+        results: List[Dict[str, Any]] = []
+        failed = 0
+
+        for iface in interfaces:
+            if iface.status == "archived":
+                continue
+            required_prop_names = {
+                p["name"] for p in (iface.required_properties or []) if p.get("required", True)
+            }
+            required_link_names = {l["name"] for l in (iface.required_links or [])}
+
+            implementing = [
+                ot for ot in object_types
+                if str(iface.id) in (ot.implemented_interfaces or [])
+            ]
+
+            details: List[Dict[str, Any]] = []
+            passed_count = 0
+            failed_count = 0
+
+            for ot in implementing:
+                ot_props = {p["name"] for p in (ot.properties or [])}
+                missing_props = list(required_prop_names - ot_props)
+                missing_links = [
+                    req["name"] for req in (iface.required_links or [])
+                    if not any(
+                        lt.name == req["name"] and lt.source_object_type_id == ot.id
+                        for lt in link_types
+                    )
+                ]
+                is_passed = not missing_props and not missing_links
+                if is_passed:
+                    passed_count += 1
+                else:
+                    failed_count += 1
+                details.append({
+                    "object_type_id": str(ot.id),
+                    "object_type_name": ot.name,
+                    "passed": is_passed,
+                    "missing_properties": missing_props,
+                    "missing_links": missing_links,
+                })
+
+            if failed_count > 0:
+                failed += 1
+
+            results.append({
+                "interface_id": str(iface.id),
+                "interface_name": iface.name,
+                "implementations_total": len(implementing),
+                "passed": passed_count,
+                "failed": failed_count,
+                "details": details,
+            })
+
+        return {
+            "status": "completed",
+            "tenant_id": str(self.tenant_id),
+            "interfaces_total": len(results),
+            "interfaces_failed": failed,
+            "results": results,
+        }
+
     # ------------------------------------------------------------------
     # ActionType
     # ------------------------------------------------------------------

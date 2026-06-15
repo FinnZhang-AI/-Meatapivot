@@ -1,33 +1,45 @@
 import { LineChart, Line, PieChart, Pie, Cell } from 'recharts'
-import { ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
-import { useDashboardStats } from '../hooks/useOntology'
+import { ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
+import { useDashboardStats, useLLMUsageTrend } from '../hooks/useOntology'
 import { useAuth } from '../hooks/useAuth'
+
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316']
+
+const formatBucketLabel = (iso: string): string => {
+  // "2026-06-15T22:00" -> "22:00"
+  const m = iso.match(/T(\d{2}:\d{2})/)
+  return m ? m[1] : iso
+}
+
+const formatCost = (cents: number): string => {
+  const dollars = cents / 100
+  if (dollars < 0.01) return `$${dollars.toFixed(4)}`
+  return `$${dollars.toFixed(2)}`
+}
 
 const Dashboard = () => {
   const { user } = useAuth()
   const tenantId = user?.tenant_id || ''
   const { data: stats, isLoading: statsLoading } = useDashboardStats(tenantId)
+  const { data: llmTrend, isLoading: llmTrendLoading } = useLLMUsageTrend(tenantId, 24)
 
-  // Mock data for charts (backend does not have historical trend data yet)
-  const queryTrendData = [
-    { name: '00:00', queries: 45 },
-    { name: '04:00', queries: 32 },
-    { name: '08:00', queries: 128 },
-    { name: '12:00', queries: 256 },
-    { name: '16:00', queries: 198 },
-    { name: '20:00', queries: 145 },
-    { name: '23:59', queries: 87 },
-  ]
+  const llmTrendData = (llmTrend?.buckets ?? []).map((b) => ({
+    name: formatBucketLabel(b.bucket),
+    calls: b.callCount,
+    tokens: b.totalTokens,
+    costCents: b.estimatedCostCents,
+  }))
 
-  const entityTypeData = [
-    { name: '人员', value: 4500 },
-    { name: '组织', value: 3200 },
-    { name: '事件', value: 2800 },
-    { name: '地点', value: 1500 },
-    { name: '其他', value: 847 },
-  ]
+  const distributionData = (stats?.objectTypeDistribution ?? []).map((d) => ({
+    name: d.name,
+    value: d.instanceCount,
+  }))
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+  const totalCostCents = (llmTrend?.buckets ?? []).reduce(
+    (acc, b) => acc + (b.estimatedCostCents || 0),
+    0,
+  )
+  const totalCalls = (llmTrend?.buckets ?? []).reduce((acc, b) => acc + b.callCount, 0)
 
   return (
     <div className="space-y-6">
@@ -115,69 +127,100 @@ const Dashboard = () => {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Query Trend Chart */}
+        {/* LLM Usage Trend (24h) */}
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-            24 小时查询趋势
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+              24h LLM 调用趋势
+            </h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {llmTrendLoading
+                ? '加载中…'
+                : `${totalCalls} 次 · ${formatCost(totalCostCents)}`}
+            </span>
+          </div>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={queryTrendData}>
-                <XAxis dataKey="name" stroke="#94A3B8" fontSize={12} />
-                <YAxis stroke="#94A3B8" fontSize={12} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1E293B', 
-                    border: 'none', 
-                    borderRadius: '8px',
-                    color: '#F1F5F9'
-                  }} 
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="queries" 
-                  stroke="#3B82F6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3B82F6', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {llmTrendData.length === 0 && !llmTrendLoading ? (
+              <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                暂无调用记录
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={llmTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+                  <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} />
+                  <YAxis stroke="#94A3B8" fontSize={11} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1E293B',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#F1F5F9',
+                    }}
+                    labelStyle={{ color: '#94A3B8' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, color: '#94A3B8' }} />
+                  <Line
+                    type="monotone"
+                    dataKey="calls"
+                    name="调用次数"
+                    stroke="#3B82F6"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="tokens"
+                    name="Token 数"
+                    stroke="#10B981"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {/* Entity Type Distribution */}
+        {/* Object Type Distribution */}
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-            实体类型分布
+            对象类型实例分布
           </h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={entityTypeData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {entityTypeData.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1E293B', 
-                    border: 'none', 
-                    borderRadius: '8px',
-                    color: '#F1F5F9'
-                  }} 
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {distributionData.length === 0 && !statsLoading ? (
+              <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                暂无对象类型
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distributionData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
+                  >
+                    {distributionData.map((_entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1E293B',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#F1F5F9',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>

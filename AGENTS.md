@@ -111,6 +111,7 @@
 - 文件上传限制为 `.pdf`, `.docx`, `.txt`, `.md`, `.csv`, `.xlsx`, `.jpg`, `.png`
 - 所有 API 返回统一 JSON 格式，全局异常处理器已注册
 - 多租户隔离通过 `tenant_id` 字段实现
+- **OPA / Rego 评估**：`opa-python` 在 PyPI 不存在（DEVPLAN-v2.3 S3-2 写错了）。Sprint 3 已落地内嵌求值器 `app/services/opa_client.py`（自研 Rego 子集解析 + 安全 AST 求值）。如需替换为真实 OPA 服务，只换 evaluator，调用层 (`ActionExecutor`) 不动 — 接口契约是 `OPAClient.evaluate(input_doc) -> PolicyDecision`
 
 ---
 

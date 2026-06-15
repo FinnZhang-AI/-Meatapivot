@@ -235,6 +235,25 @@ export interface DashboardStats {
   functionCount: number
   actionExecutionCount: number
   recentActions: RecentAction[]
+  objectTypeDistribution: ObjectTypeDistributionItem[]
+}
+
+export interface ObjectTypeDistributionItem {
+  name: string
+  instanceCount: number
+}
+
+export interface LLMUsageBucket {
+  bucket: string
+  callCount: number
+  totalTokens: number
+  estimatedCostCents: number
+}
+
+export interface LLMUsageTrend {
+  groupBy: string
+  hours: number
+  buckets: LLMUsageBucket[]
 }
 
 export interface SubgraphResponse {

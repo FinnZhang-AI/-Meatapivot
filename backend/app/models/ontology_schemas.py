@@ -503,6 +503,11 @@ class RecentAction(BaseModel):
     duration_ms: Optional[int] = None
 
 
+class ObjectTypeDistribution(BaseModel):
+    name: str
+    instance_count: int
+
+
 class DashboardStats(BaseModel):
     object_type_count: int
     object_instance_count: int
@@ -512,6 +517,7 @@ class DashboardStats(BaseModel):
     function_count: int
     action_execution_count: int
     recent_actions: List[RecentAction]
+    object_type_distribution: List[ObjectTypeDistribution] = Field(default_factory=list)
 
 
 class ValueTypeCreate(BaseModel):

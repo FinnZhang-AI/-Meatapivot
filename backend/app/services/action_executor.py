@@ -23,6 +23,7 @@ from app.models.ontology_models import (
 )
 from app.models.ontology_schemas import ActionExecuteResponse, RuleEvaluation
 from app.services.neo4j_client import neo4j_client
+from app.services.opa_client import opa_client, PolicyDecision
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,50 @@ class ActionExecutor:
                     success=False,
                     message=f"Blocked by rules: {[r.name for r in blocked]}",
                     rule_results=rule_results,
+                    execution_log_id=log.id,
+                )
+
+            # S3-2: OPA policy gate. Runs after the in-Python rule engine so
+            # the policy bundle is the single source of truth for cross-cutting
+            # checks (tenant isolation, destructive-read blocks, parameter caps).
+            policy_input = {
+                "action": {
+                    "id": str(action.id),
+                    "name": action.name,
+                    "execution_type": action.execution_type,
+                    "tenant_id": str(action.tenant_id),
+                },
+                "context": {
+                    "tenant_id": str(self.tenant_id),
+                    "executed_by": str(executed_by) if executed_by else "",
+                    "target_object_id": str(target_object_id) if target_object_id else "",
+                },
+                "parameters": parameters or {},
+            }
+            try:
+                policy_decision: PolicyDecision = opa_client.evaluate(policy_input)
+            except Exception as policy_exc:  # noqa: BLE001 — keep actions running if OPA itself errors
+                logger.error(f"OPA evaluation crashed; allowing action: {policy_exc}")
+                policy_decision = PolicyDecision(
+                    rule_name="allow", allowed=True, reason="opa_crash_fail_open"
+                )
+
+            if not policy_decision.allowed:
+                log.status = "blocked"
+                log.error_message = f"OPA_REJECTED: {policy_decision.reason}"
+                log.completed_at = datetime.utcnow()
+                await self.db.flush()
+                logger.warning(
+                    f"Action {action.name} blocked by OPA rule {policy_decision.rule_name!r}"
+                )
+                return ActionExecuteResponse(
+                    success=False,
+                    message=f"OPA_REJECTED: {policy_decision.reason}",
+                    rule_results=rule_results + [RuleEvaluation(
+                        rule_name=f"OPA::{policy_decision.rule_name}",
+                        passed=False,
+                        reason=policy_decision.reason,
+                    )],
                     execution_log_id=log.id,
                 )
 
