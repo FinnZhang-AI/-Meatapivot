@@ -15,6 +15,8 @@ from app.models.ontology_models import (
     OntologyLinkType,
     OntologyLink,
     OntologyInterface,
+    OntologyActionType,
+    OntologyFunction,
     OntologyCompileLog,
     OntologyCurrentVersion,
 )

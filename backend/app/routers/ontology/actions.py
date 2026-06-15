@@ -25,7 +25,7 @@ from app.routers.auth import get_current_user, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/ontology", tags=["Ontology - Actions & Functions"])
+router = APIRouter(tags=["Ontology - Actions & Functions"])
 
 
 async def _get_tenant_id(current_user: UserResponse) -> UUID:

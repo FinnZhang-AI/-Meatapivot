@@ -11,7 +11,7 @@ from typing import Optional
 from app.services.keycloak_client import keycloak_client
 from app.core.config import settings
 
-router = APIRouter(prefix="/oidc", tags=["OIDC"])
+router = APIRouter(tags=["OIDC"])
 
 
 @router.get("/login")

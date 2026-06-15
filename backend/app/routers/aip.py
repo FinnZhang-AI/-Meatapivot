@@ -43,7 +43,7 @@ from app.services import llama_index_rag
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/aip", tags=["AIP"])
+router = APIRouter(tags=["AIP"])
 
 
 # ---------------------------------------------------------------------------

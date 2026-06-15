@@ -15,7 +15,7 @@ from app.routers.auth import get_current_user, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/decision-flows", tags=["Decision Flows"])
+router = APIRouter(tags=["Decision Flows"])
 
 
 

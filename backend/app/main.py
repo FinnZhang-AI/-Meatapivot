@@ -185,8 +185,10 @@ except Exception as e:
 # NEW: Ontology and AIP routers (imported with lazy handling for missing deps)
 try:
     from app.routers import ontology
-    app.include_router(ontology.router, prefix=f"{settings.API_PREFIX}/ontology", tags=["Ontology"])
-    logger.info("Ontology router registered")
+    app.include_router(ontology.object_types_router, prefix=f"{settings.API_PREFIX}/ontology", tags=["Ontology"])
+    app.include_router(ontology.interfaces_router, prefix=f"{settings.API_PREFIX}/ontology/interfaces", tags=["Ontology"])
+    app.include_router(ontology.actions_router, prefix=f"{settings.API_PREFIX}/ontology", tags=["Ontology"])
+    logger.info("Ontology routers registered")
 except Exception as e:
     logger.warning(f"Ontology router not available: {e}")
 

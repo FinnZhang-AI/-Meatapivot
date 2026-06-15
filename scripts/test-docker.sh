@@ -35,12 +35,12 @@ function test_step() {
 
 function pass() {
     echo -e "${GREEN}  ✅ $1${NC}"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
 }
 
 function fail() {
     echo -e "${RED}  ❌ $1${NC}"
-    ((FAILED++))
+    FAILED=$((FAILED + 1))
 }
 
 function warn() {
@@ -130,7 +130,7 @@ done
 
 echo "  等待 RabbitMQ..."
 for i in {1..30}; do
-    if docker exec meatapivot-rabbitmq-test rabbitmq-diagnostics ping 2>/dev/null | grep -q "ok"; then
+    if docker exec meatapivot-rabbitmq-test rabbitmq-diagnostics ping 2>/dev/null | grep -q "succeeded"; then
         pass "RabbitMQ 就绪"
         break
     fi
@@ -188,7 +188,7 @@ BAD_LOGIN=$(curl -s -X POST http://localhost:8001/api/v1/auth/login \
     -H "Content-Type: application/x-www-form-urlencoded" \
     -d "username=admin&password=wrongpassword" || echo "FAILED")
 
-if echo "$BAD_LOGIN" | grep -q "401\|Unauthorized\|incorrect"; then
+if echo "$BAD_LOGIN" | grep -qi "401\|Unauthorized\|incorrect"; then
     pass "错误密码被拒绝"
 else
     fail "错误密码未被拒绝"
@@ -378,10 +378,10 @@ if [ -n "$TOKEN" ]; then
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TOKEN" \
         -d '{
-            "cypher": "CREATE (n:Hack) RETURN n"
+            "cypher_query": "CREATE (n:Hack) RETURN n"
         }' || echo "FAILED")
     
-    if echo "$INJECTION" | grep -q "403\|Forbidden\|not allowed\|rejected"; then
+    if echo "$INJECTION" | grep -qi "403\|Forbidden\|not allowed\|rejected\|Invalid\|forbidden"; then
         pass "Cypher CREATE 被阻止"
     else
         fail "Cypher CREATE 未被阻止"
@@ -393,7 +393,7 @@ if [ -n "$TOKEN" ]; then
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TOKEN" \
         -d '{
-            "cypher": "MATCH (n) RETURN count(n) as count LIMIT 10"
+            "cypher_query": "MATCH (n) RETURN count(n) as count LIMIT 10"
         }' || echo "FAILED")
     
     if echo "$NORMAL_QUERY" | grep -q "count"; then

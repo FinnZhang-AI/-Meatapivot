@@ -4,7 +4,7 @@ P0-ONT-02: Static validator (compile-time) + Runtime validator (Pydantic dynamic
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
 from pydantic import create_model, Field, ValidationError

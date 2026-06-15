@@ -19,7 +19,8 @@ from app.models.ontology_schemas import (
     LinkTypeCreate, LinkTypeUpdate, LinkTypeResponse, LinkTypeListResponse,
     OntologyLinkCreate, OntologyLinkResponse,
     SubgraphResponse, GraphNode, GraphEdge, GraphMetadata,
-    PropertyDef, OntologySearchRequest, OntologySearchResponse
+    PropertyDef, OntologySearchRequest, OntologySearchResponse,
+    ValidationResponse, DAGCycleResponse
 )
 from app.routers.auth import get_current_user, UserResponse
 from app.services.neo4j_client import neo4j_client
@@ -27,7 +28,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/ontology", tags=["Ontology"])
+router = APIRouter(tags=["Ontology"])
 
 
 async def _get_tenant_id(current_user: UserResponse) -> UUID:
@@ -851,3 +852,41 @@ async def compile_ontology(
     tenant_id = await _get_tenant_id(current_user)
     executed_by = UUID(current_user.id) if current_user.id else None
     return await do_compile(db, tenant_id, executed_by)
+
+
+@router.post("/compile/validate", response_model=ValidationResponse)
+async def validate_ontology(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Run static validation on all ontology definitions."""
+    from app.services.ontology_service import OntologyService
+    tenant_id = await _get_tenant_id(current_user)
+    service = OntologyService(db, tenant_id)
+    errors = await service.validate_all()
+    return ValidationResponse(
+        is_valid=len(errors) == 0,
+        errors=errors,
+        error_count=len(errors),
+        warning_count=0,
+    )
+
+
+@router.get("/dag/cycle", response_model=DAGCycleResponse)
+async def detect_dag_cycle(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Detect cycles in ontology dependencies."""
+    from app.services.ontology_service import OntologyService
+    tenant_id = await _get_tenant_id(current_user)
+    service = OntologyService(db, tenant_id)
+    cycle = await service.detect_cycles()
+    if cycle:
+        cycle_str = " -> ".join(str(n)[:8] for n in cycle)
+        return DAGCycleResponse(
+            has_cycle=True,
+            cycle_path=[str(n) for n in cycle],
+            cycle_description=f"Circular dependency detected: {cycle_str}",
+        )
+    return DAGCycleResponse(has_cycle=False)

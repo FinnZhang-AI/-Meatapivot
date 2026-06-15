@@ -1,14 +1,10 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
 from app.core.config import settings
+from app.services.database import Base
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class PostgresClient:

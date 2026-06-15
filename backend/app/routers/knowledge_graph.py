@@ -17,7 +17,7 @@ from app.routers.auth import get_current_user, UserResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/knowledge-graph", tags=["Knowledge Graph"])
+router = APIRouter(tags=["Knowledge Graph"])
 
 
 @router.post("/entities", response_model=EntityResponse, status_code=status.HTTP_201_CREATED)

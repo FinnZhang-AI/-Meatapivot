@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, Integer, Text, ForeignKey, Index, CheckConstraint, func
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, BigInteger, Text, ForeignKey, Index, CheckConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.services.database import Base

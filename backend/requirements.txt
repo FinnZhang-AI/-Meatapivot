@@ -10,6 +10,7 @@ aio-pika==9.4.0
 minio==7.2.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt<5  # bcrypt 5.0.0 breaks passlib verify
 python-multipart==0.0.6
 httpx==0.26.0
 aiofiles==23.2.1
@@ -37,8 +38,8 @@ pyyaml==6.0.1
 pymilvus==2.3.6
 sentence-transformers==2.3.1
 llama-index==0.10.0
-guardrails-ai==0.4.0
-presidio-analyzer==2.2.355
+# guardrails-ai==0.4.0  # Pydantic conflict; unblock when v2.3 S2-1 guardrails needed
+# presidio-analyzer==2.2.355  # PII detection; unblock when v2.3 S2-2 PII needed
 RestrictedPython==7.4
 celery==5.3.6
 python-keycloak==3.12.0

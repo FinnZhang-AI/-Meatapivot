@@ -23,7 +23,7 @@ from app.services.database import get_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/prompts", tags=["AIP - Prompts"])
+router = APIRouter(tags=["AIP - Prompts"])
 
 
 def _extract_variables(template_text: str) -> list[str]:
