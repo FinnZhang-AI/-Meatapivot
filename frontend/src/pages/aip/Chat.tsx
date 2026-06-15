@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAIPStore } from '../../stores/aipStore'
-import { useStreamChat, useChat } from '../../hooks/useAIP'
+import { useStreamChat, useChat, usePromptTemplates } from '../../hooks/useAIP'
 import ChatMessageBubble from '../../components/aip/ChatMessageBubble'
 import type { ChatMessage } from '../../types/aip'
 
@@ -15,7 +15,9 @@ export default function Chat() {
   const { messages, addMessage, currentModel, setCurrentModel, temperature, setTemperature, streamMode, setStreamMode, startNewChat } = useAIPStore()
   const { streamChat, isStreaming, abort } = useStreamChat()
   const { mutateAsync: chatAsync } = useChat()
+  const { data: promptTemplates } = usePromptTemplates(1, 100)
   const [input, setInput] = useState('')
+  const [selectedPromptId, setSelectedPromptId] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -38,6 +40,14 @@ export default function Chat() {
     addMessage(userMessage)
     setInput('')
 
+    const baseRequest = {
+      messages: [...messages, userMessage],
+      model: currentModel,
+      temperature,
+      promptTemplateId: selectedPromptId || undefined,
+      promptVariables: selectedPromptId ? { user_input: input.trim() } : undefined,
+    }
+
     if (streamMode) {
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -51,9 +61,7 @@ export default function Chat() {
       try {
         await streamChat(
           {
-            messages: [...messages, userMessage],
-            model: currentModel,
-            temperature,
+            ...baseRequest,
             stream: true,
           },
           (chunk) => {
@@ -73,9 +81,7 @@ export default function Chat() {
     } else {
       try {
         const response = await chatAsync({
-          messages: [...messages, userMessage],
-          model: currentModel,
-          temperature,
+          ...baseRequest,
           stream: false,
         })
         addMessage({
@@ -159,6 +165,16 @@ export default function Chat() {
               />
               流式输出
             </label>
+            <select
+              value={selectedPromptId}
+              onChange={(e) => setSelectedPromptId(e.target.value)}
+              className="px-3 py-1.5 border rounded-lg text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            >
+              <option value="">默认 Prompt</option>
+              {promptTemplates?.items.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
           </div>
           {isStreaming && (
             <button

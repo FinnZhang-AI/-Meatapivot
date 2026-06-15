@@ -51,6 +51,7 @@ const Layout = () => {
     { name: 'AI 对话', href: '/aip/chat', icon: '🤖' },
     { name: 'RAG 搜索', href: '/aip/rag', icon: '🔍' },
     { name: 'AI Agent', href: '/aip/agents', icon: '🧠' },
+    { name: 'Prompt 管理', href: '/aip/prompts', icon: '📝' },
   ]
 
   const systemNavigation = [

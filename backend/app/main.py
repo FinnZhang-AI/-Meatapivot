@@ -197,6 +197,13 @@ try:
 except Exception as e:
     logger.warning(f"AIP router not available: {e}")
 
+try:
+    from app.routers import prompts
+    app.include_router(prompts.router, prefix=f"{settings.API_PREFIX}/aip/prompts", tags=["AIP - Prompts"])
+    logger.info("Prompts router registered")
+except Exception as e:
+    logger.warning(f"Prompts router not available: {e}")
+
 
 @app.get("/")
 @limiter.limit("60/minute")

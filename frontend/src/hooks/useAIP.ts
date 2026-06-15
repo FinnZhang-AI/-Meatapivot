@@ -12,6 +12,12 @@ import type {
   AgentRunRequest,
   AgentRunResponse,
   AgentDefinition,
+  PromptTemplate,
+  PromptTemplateCreate,
+  PromptTemplateUpdate,
+  PromptTemplateList,
+  PromptRenderRequest,
+  PromptRenderResponse,
 } from '../types/aip'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
@@ -226,6 +232,172 @@ export function useAgentInterrupt() {
         headers: getAuthHeaders(token),
       })
       return handleResponse<AgentRunResponse>(response)
+    },
+  })
+}
+
+export function useAgentResume() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (request: AgentRunRequest & { agentId: string; traceId: string }) => {
+      const { agentId, traceId, ...body } = request
+      const response = await fetch(`${API_BASE_URL}/aip/agents/${agentId}/resume?trace_id=${traceId}`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(body),
+      })
+      return handleResponse<AgentRunResponse>(response)
+    },
+  })
+}
+
+export function useAgentStream() {
+  const { token } = useAuth()
+
+  const streamRun = async (
+    request: AgentRunRequest & { agentId: string },
+    onEvent: (event: { event: string; trace_id?: string; data?: any }) => void,
+  ) => {
+    const { agentId, ...body } = request
+    const response = await fetch(`${API_BASE_URL}/aip/agents/${agentId}/stream`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(token),
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || `HTTP ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Response body is null')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+
+        const payload = trimmed.slice(5).trim()
+        if (payload === '[DONE]') return
+        if (!payload) continue
+
+        try {
+          const parsed = JSON.parse(payload)
+          onEvent(parsed)
+        } catch {
+          // Ignore malformed JSON lines
+        }
+      }
+    }
+  }
+
+  return { streamRun }
+}
+
+// ---------------------------------------------------------------------------
+// Prompt Template Management
+// ---------------------------------------------------------------------------
+
+export function usePromptTemplates(page: number = 1, pageSize: number = 20) {
+  const { token } = useAuth()
+  return useQuery<PromptTemplateList>({
+    queryKey: ['promptTemplates', page, pageSize],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/aip/prompts?page=${page}&page_size=${pageSize}`, {
+        headers: getAuthHeaders(token),
+      })
+      return handleResponse<PromptTemplateList>(response)
+    },
+  })
+}
+
+export function useCreatePromptTemplate() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (request: PromptTemplateCreate) => {
+      // Convert camelCase to snake_case for backend
+      const body = {
+        name: request.name,
+        description: request.description,
+        template_text: request.templateText,
+        variables: request.variables,
+        is_ab_test: request.isAbTest,
+        ab_test_group: request.abTestGroup,
+      }
+      const response = await fetch(`${API_BASE_URL}/aip/prompts`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(body),
+      })
+      return handleResponse<PromptTemplate>(response)
+    },
+  })
+}
+
+export function useUpdatePromptTemplate() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (request: PromptTemplateUpdate & { id: string }) => {
+      const { id, ...rest } = request
+      const body: Record<string, any> = {}
+      if (rest.description !== undefined) body.description = rest.description
+      if (rest.templateText !== undefined) body.template_text = rest.templateText
+      if (rest.variables !== undefined) body.variables = rest.variables
+      if (rest.isActive !== undefined) body.is_active = rest.isActive
+      if (rest.isAbTest !== undefined) body.is_ab_test = rest.isAbTest
+      if (rest.abTestGroup !== undefined) body.ab_test_group = rest.abTestGroup
+
+      const response = await fetch(`${API_BASE_URL}/aip/prompts/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify(body),
+      })
+      return handleResponse<PromptTemplate>(response)
+    },
+  })
+}
+
+export function useDeletePromptTemplate() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`${API_BASE_URL}/aip/prompts/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(token),
+      })
+      if (!response.ok) {
+        const error = await response.text()
+        throw new Error(error || `HTTP ${response.status}`)
+      }
+    },
+  })
+}
+
+export function useRenderPromptTemplate() {
+  const { token } = useAuth()
+  return useMutation({
+    mutationFn: async (request: PromptRenderRequest & { id: string }) => {
+      const { id, variables } = request
+      const response = await fetch(`${API_BASE_URL}/aip/prompts/${id}/render`, {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({ variables }),
+      })
+      return handleResponse<PromptRenderResponse>(response)
     },
   })
 }

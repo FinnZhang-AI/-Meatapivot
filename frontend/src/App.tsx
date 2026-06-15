@@ -25,6 +25,7 @@ import ObjectView from './pages/objects/ObjectView'
 import Chat from './pages/aip/Chat'
 import RAGSearch from './pages/aip/RAGSearch'
 import AgentChat from './pages/aip/AgentChat'
+import PromptManager from './pages/aip/PromptManager'
 
 function App() {
   return (
@@ -56,6 +57,7 @@ function App() {
           <Route path="aip/chat" element={<Chat />} />
           <Route path="aip/rag" element={<RAGSearch />} />
           <Route path="aip/agents" element={<AgentChat />} />
+          <Route path="aip/prompts" element={<PromptManager />} />
         </Route>
       </Routes>
     </AuthProvider>

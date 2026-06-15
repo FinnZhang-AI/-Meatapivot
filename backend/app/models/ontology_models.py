@@ -401,6 +401,32 @@ class AIPRAGQuery(Base):
     )
 
 
+class AIPPromptTemplate(Base):
+    __tablename__ = "aip_prompt_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid_module.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    template_text = Column(Text, nullable=False)
+    variables = Column(JSONB, default=list)
+    version = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True)
+    is_ab_test = Column(Boolean, default=False)
+    ab_test_group = Column(String(50))
+    usage_count = Column(Integer, default=0)
+    avg_prompt_tokens = Column(Integer, default=0)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default="NOW()")
+    updated_at = Column(DateTime(timezone=True), server_default="NOW()", onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_aip_prompt_templates_tenant", "tenant_id"),
+        Index("idx_aip_prompt_templates_name", "tenant_id", "name"),
+        {"schema": None},
+    )
+
+
 class AIPGuardrailsLog(Base):
     __tablename__ = "aip_guardrails_logs"
 

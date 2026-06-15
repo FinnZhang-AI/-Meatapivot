@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from typing import List, Optional, Dict, Any
@@ -12,14 +13,48 @@ from app.models.ontology_schemas import (
 )
 from app.services.neo4j_client import neo4j_client
 from app.services.milvus_client import milvus_client
+from app.services.llm_gateway import llm_gateway
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Optional BGE-Reranker dependency - import with fallback
+try:
+    from sentence_transformers import CrossEncoder
+    _RERANKER_AVAILABLE = True
+except Exception as e:
+    logger.debug(f"sentence-transformers not available: {e}")
+    CrossEncoder = None
+    _RERANKER_AVAILABLE = False
+
+# Optional llama-index dependency - import with fallback
+try:
+    from llama_index.core import Settings
+    _LLAMA_INDEX_AVAILABLE = True
+except Exception as e:
+    logger.debug(f"llama-index not available: {e}")
+    Settings = None
+    _LLAMA_INDEX_AVAILABLE = False
 
 
 class SemanticSearchService:
     def __init__(self, db: AsyncSession, tenant_id: UUID):
         self.db = db
         self.tenant_id = tenant_id
+        self._reranker: Optional[Any] = None
+        self._init_reranker()
+    
+    def _init_reranker(self) -> None:
+        """Lazy-load BGE-Reranker-v2-m3 with graceful fallback."""
+        if not _RERANKER_AVAILABLE or CrossEncoder is None:
+            return
+        try:
+            # Use a small, commonly cached reranker model
+            self._reranker = CrossEncoder("BAAI/bge-reranker-v2-m3")
+            logger.debug("BGE-Reranker initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize BGE-Reranker: {e}")
+            self._reranker = None
     
     async def search(
         self,
@@ -27,10 +62,16 @@ class SemanticSearchService:
         object_types: Optional[List[str]] = None,
         search_mode: str = "hybrid",
         top_k: int = 20,
-        explain: bool = False
+        explain: bool = False,
+        use_reranker: bool = True,
     ) -> OntologySearchResponse:
-        """Hybrid search combining vector and graph retrieval"""
+        """Hybrid search combining vector, graph, LLM entity extraction, and BGE reranking."""
         start_time = int(time.time() * 1000)
+        
+        # Optional: extract ontology object types from the query
+        inferred_types = await self._infer_object_types(query)
+        if inferred_types:
+            object_types = object_types or inferred_types
         
         vector_results = []
         graph_results = []
@@ -42,14 +83,26 @@ class SemanticSearchService:
             graph_results = await self._graph_search(query, object_types, top_k)
         
         combined = self._merge_results(vector_results, graph_results)
+        reranked = False
+        
+        if use_reranker and self._reranker is not None and combined:
+            try:
+                combined = self._rerank_with_bge(query, combined)
+                reranked = True
+            except Exception as e:
+                logger.warning(f"BGE reranking failed, falling back to RRF: {e}")
+                combined = self._rerank_rrf(combined)
+                reranked = True
+        elif len(vector_results) > 0 and len(graph_results) > 0:
+            combined = self._rerank_rrf(combined)
+            reranked = True
         
         if len(combined) > top_k:
             combined = combined[:top_k]
         
-        reranked = False
-        if len(vector_results) > 0 and len(graph_results) > 0:
-            combined = self._rerank_rrf(combined)
-            reranked = True
+        # Enrich explanations with source info
+        for item in combined:
+            item.explanation = self._build_explanation(item, reranked)
         
         duration_ms = int(time.time() * 1000) - start_time
         
@@ -62,6 +115,36 @@ class SemanticSearchService:
             reranked=reranked,
             duration_ms=duration_ms
         )
+    
+    async def _infer_object_types(self, query: str) -> Optional[List[str]]:
+        """Use LLM to extract relevant Ontology Object Types from the query."""
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an ontology analyzer. Given a user query, return a JSON array "
+                        "of ontology object type names that are most relevant. Return [] if none. "
+                        "Example: [\"Customer\", \"Order\"]"
+                    ),
+                },
+                {"role": "user", "content": f"Query: {query}\nObject types:"},
+            ]
+            result = await llm_gateway.chat(
+                messages=messages,
+                model=settings.DEFAULT_LLM_MODEL,
+                temperature=0.0,
+                max_tokens=128,
+            )
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "[]")
+            # Strip markdown code fences if present
+            content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            types = json.loads(content)
+            if isinstance(types, list):
+                return [str(t).strip() for t in types if t]
+        except Exception as e:
+            logger.debug(f"Object type inference failed: {e}")
+        return None
     
     async def _vector_search(
         self,
@@ -183,8 +266,24 @@ class SemanticSearchService:
         
         return list(merged.values())
     
+    def _rerank_with_bge(self, query: str, results: List[SearchResultItem]) -> List[SearchResultItem]:
+        """Rerank results using BGE-Reranker-v2-m3."""
+        if not self._reranker or not results:
+            return results
+        
+        pairs = [
+            (query, f"{r.object_type} {r.object_key} {json.dumps(r.properties_preview, ensure_ascii=False)[:500]}")
+            for r in results
+        ]
+        scores = self._reranker.predict(pairs)
+        for item, score in zip(results, scores):
+            item.score = float(score)
+            item.source = f"{item.source}+rerank"
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results
+    
     def _rerank_rrf(self, results: List[SearchResultItem], k: int = 60) -> List[SearchResultItem]:
-        """Reciprocal Rank Fusion for result re-ranking"""
+        """Reciprocal Rank Fusion fallback for result re-ranking"""
         if not results:
             return results
         
@@ -214,6 +313,13 @@ class SemanticSearchService:
         results.sort(key=lambda x: x.score, reverse=True)
         
         return results
+    
+    def _build_explanation(self, item: SearchResultItem, reranked: bool) -> str:
+        """Build human-readable explanation for a search result."""
+        source = item.source
+        if reranked:
+            return f"Reranked {source} match (score {item.score:.3f})"
+        return item.explanation or f"{source} match (score {item.score:.3f})"
 
 
 async def search_ontology(

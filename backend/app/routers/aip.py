@@ -1,7 +1,7 @@
 """AIP (AI Platform) API Router"""
 import json
 import logging
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Dict, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -18,7 +18,12 @@ from app.models.aip_schemas import (
     RAGQueryRequest,
     RAGQueryResponse,
     RAGSource,
+    AgentRunRequest,
     AgentRunResponse,
+    AgentListResponse,
+    AgentDefinitionSchema,
+    AgentStep,
+    AgentSSEEvent,
     LLMCallLogResponse,
     GuardrailsLogResponse,
     AvailableModelsResponse,
@@ -29,6 +34,9 @@ from app.services.database import get_db
 from app.services.llm_gateway import llm_gateway
 from app.services.semantic_search import SemanticSearchService
 from app.services.guardrails_service import GuardrailsService
+from app.services.agent_engine import AgentEngine, AgentSession, agent_registry
+from app.services.prompt_template_service import PromptTemplateService
+from app.services import llama_index_rag
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +75,16 @@ async def chat(
         )
 
     try:
+        # Apply prompt template if provided
+        prompt_service = PromptTemplateService(db, tenant_id)
+        if data.prompt_template_id:
+            rendered = await prompt_service.render(
+                data.prompt_template_id,
+                data.prompt_variables or {"user_input": last_user_message},
+            )
+            if rendered:
+                messages.insert(0, {"role": "system", "content": rendered})
+
         result = await llm_gateway.chat(
             messages=messages,
             model=data.model,
@@ -77,20 +95,28 @@ async def chat(
         choice = result.get("choices", [{}])[0]
         message_data = choice.get("message", {})
         usage_data = result.get("usage", {})
-            # Guardrails output check
+        # Guardrails output check
         output_check = guardrails.check_output(message_data.get("content", ""))
+        safe_content = output_check.get("redacted_text", message_data.get("content", ""))
         await guardrails.log_check(
             model=result.get("model", data.model or settings.DEFAULT_LLM_MODEL),
             input_text=last_user_message,
-            output_text=message_data.get("content", ""),
+            output_text=safe_content,
             input_result=input_check,
             output_result=output_check,
         )
 
+        # Update prompt template usage statistics
+        if data.prompt_template_id:
+            await prompt_service.record_usage(
+                data.prompt_template_id,
+                usage_data.get("prompt_tokens", 0),
+            )
+
         return ChatResponse(
             message=ChatMessage(
                 role=message_data.get("role", "assistant"),
-                content=message_data.get("content", ""),
+                content=safe_content,
             ),
             model=result.get("model", data.model or settings.DEFAULT_LLM_MODEL),
             usage={
@@ -201,40 +227,98 @@ async def rag_query(
     context = "\n".join(context_parts) if context_parts else "No relevant ontology objects found."
 
     # Step 3: Ask LLM to answer based on context
-    system_prompt = "You are a helpful assistant. Answer the user's question based ONLY on the provided ontology context. If the context does not contain enough information, say so."
-    user_prompt = f"Context:\n{context}\n\nQuestion: {data.query}\n\nAnswer:"
+    default_system = "You are a helpful assistant. Answer the user's question based ONLY on the provided ontology context. If the context does not contain enough information, say so."
+    default_user = f"Context:\n{context}\n\nQuestion: {data.query}\n\nAnswer:"
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    try:
-        result = await llm_gateway.chat(
-            messages=messages,
-            model=settings.DEFAULT_LLM_MODEL,
-            temperature=0.3,
-            max_tokens=2048,
-            db=db,
+    prompt_service = PromptTemplateService(db, tenant_id)
+    if data.prompt_template_id:
+        rendered = await prompt_service.render(
+            data.prompt_template_id,
+            {
+                "query": data.query,
+                "context": context,
+                **(data.prompt_variables or {}),
+            },
         )
-        answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-        model_used = result.get("model", settings.DEFAULT_LLM_MODEL)
+        if rendered:
+            # Template is treated as system prompt; user prompt contains context + query
+            system_prompt = rendered
+            user_prompt = f"Context:\n{context}\n\nQuestion: {data.query}\n\nAnswer:"
+        else:
+            system_prompt = default_system
+            user_prompt = default_user
+    else:
+        system_prompt = default_system
+        user_prompt = default_user
 
-        # Guardrails output check
-        output_check = guardrails.check_output(answer)
-        await guardrails.log_check(
-            model=model_used,
-            input_text=data.query,
-            output_text=answer,
-            input_result={"passed": True, "score": 0, "triggered": [], "check_type": "input"},
-            output_result=output_check,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"RAG LLM error: {e}")
-        answer = f"Failed to generate answer: {e}"
-        model_used = ""
+    answer = ""
+    model_used = ""
+    usage_data: Dict[str, int] = {}
+
+    # Optional LlamaIndex synthesis
+    if data.use_llama_index:
+        try:
+            llama_answer = await llama_index_rag.query_with_llama_index(
+                query=data.query,
+                search_results=sources,
+                system_prompt=system_prompt,
+            )
+            if llama_answer:
+                answer = llama_answer
+                model_used = "llama-index"
+        except Exception as e:
+            logger.warning(f"LlamaIndex RAG failed, falling back to native: {e}")
+
+    # Native LLM synthesis
+    if not answer:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            result = await llm_gateway.chat(
+                messages=messages,
+                model=settings.DEFAULT_LLM_MODEL,
+                temperature=0.3,
+                max_tokens=2048,
+                db=db,
+            )
+            answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            model_used = result.get("model", settings.DEFAULT_LLM_MODEL)
+            usage_data = result.get("usage", {}) or {}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"RAG LLM error: {e}")
+            answer = f"Failed to generate answer: {e}"
+            model_used = ""
+
+    # Guardrails output check
+    if answer and not answer.startswith("Failed to generate answer"):
+        try:
+            output_check = guardrails.check_output(answer, ontology_context=context)
+            safe_answer = output_check.get("redacted_text", answer)
+            await guardrails.log_check(
+                model=model_used,
+                input_text=data.query,
+                output_text=safe_answer,
+                input_result={"passed": True, "score": 0, "triggered": [], "check_type": "input"},
+                output_result=output_check,
+            )
+            answer = safe_answer
+        except Exception as e:
+            logger.warning(f"RAG output guardrails failed: {e}")
+
+    # Update prompt template usage statistics
+    if data.prompt_template_id and model_used and model_used != "llama-index":
+        try:
+            await prompt_service.record_usage(
+                data.prompt_template_id,
+                usage_data.get("prompt_tokens", 0),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record prompt template usage: {e}")
 
     return RAGQueryResponse(
         answer=answer,
@@ -269,17 +353,21 @@ async def list_agents():
     """List available agents."""
     _ensure_agents_initialized()
     agents = agent_registry.list_all()
-    return AgentListResponse(
-        agents=[
-            AgentDefinitionSchema(
-                id=a.agent_id,
-                name=a.name,
-                workflow_mode=a.workflow_mode,
-                model=a.model,
-            )
-            for a in agents
-        ]
-    )
+    return AgentListResponse(agents=[AgentDefinitionSchema(**a.to_schema_dict()) for a in agents])
+
+
+def _steps_to_schema(steps: list) -> list[AgentStep]:
+    return [
+        AgentStep(
+            type=s.get("type", "unknown"),
+            thought=s.get("thought"),
+            content=s.get("content"),
+            tool_calls=s.get("tool_calls"),
+            duration_ms=s.get("duration_ms"),
+            error=s.get("error"),
+        )
+        for s in steps
+    ]
 
 
 @router.post("/agents/{id}/run", response_model=AgentRunResponse)
@@ -305,19 +393,17 @@ async def run_agent(
 
     result = await engine.run(user_input=data.input, session=session, context=data.context)
 
-    return AgentRunResponse(
+    response = AgentRunResponse(
         output=result["output"],
         status=result["status"],
         trace_id=result["trace_id"],
-        steps=[AgentStep(
-            type=s.get("type", "unknown"),
-            thought=s.get("thought"),
-            content=s.get("content"),
-            tool_calls=s.get("tool_calls"),
-            duration_ms=s.get("duration_ms"),
-        ) for s in result.get("steps", [])],
-        session_id=data.session_id or UUID(result["trace_id"]),
+        steps=_steps_to_schema(result.get("steps", [])),
+        session_id=data.session_id or result["trace_id"],
     )
+    if result.get("requires_input"):
+        response.requires_input = True
+        response.prompt = result.get("prompt")
+    return response
 
 
 @router.get("/agents/{id}/status", response_model=AgentRunResponse)
@@ -333,7 +419,14 @@ async def get_agent_status(
     found = await session.load()
     if not found:
         return AgentRunResponse(output="", status="not_found", trace_id=trace_id)
-    return AgentRunResponse(output=session.get_output(), status=session.get_status(), trace_id=trace_id)
+    return AgentRunResponse(
+        output=session.get_output(),
+        status=session.get_status(),
+        trace_id=trace_id,
+        steps=_steps_to_schema(session.get_steps()),
+        requires_input=session.get_status() == "awaiting_input",
+        prompt=session.get_prompt(),
+    )
 
 
 @router.post("/agents/{id}/interrupt", response_model=AgentRunResponse)
@@ -350,7 +443,120 @@ async def interrupt_agent(
     session.set_status("interrupted")
     session.set_output("Agent interrupted by user.")
     await session.save()
-    return AgentRunResponse(output="Agent interrupted.", status="interrupted", trace_id=trace_id)
+    return AgentRunResponse(
+        output="Agent interrupted.",
+        status="interrupted",
+        trace_id=trace_id,
+        steps=_steps_to_schema(session.get_steps()),
+    )
+
+
+@router.post("/agents/{id}/resume", response_model=AgentRunResponse)
+async def resume_agent(
+    id: UUID,
+    data: AgentRunRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resume an agent waiting for human input."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    _ensure_agents_initialized()
+
+    definition = agent_registry.get(id)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Agent {id} not found")
+
+    if not data.session_id:
+        raise HTTPException(status_code=400, detail="session_id is required to resume")
+
+    session = AgentSession(session_id=data.session_id, agent_id=id, tenant_id=tenant_id)
+    found = await session.load()
+    if not found:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+
+    engine = AgentEngine(db=db, tenant_id=tenant_id, definition=definition)
+    result = await engine.run(user_input=data.input, session=session, context=data.context)
+
+    response = AgentRunResponse(
+        output=result["output"],
+        status=result["status"],
+        trace_id=result["trace_id"],
+        steps=_steps_to_schema(result.get("steps", [])),
+        session_id=str(data.session_id),
+    )
+    if result.get("requires_input"):
+        response.requires_input = True
+        response.prompt = result.get("prompt")
+    return response
+
+
+async def _agent_sse_generator(
+    engine: AgentEngine,
+    session: AgentSession,
+    trace_id: UUID,
+    user_input: str,
+    context: Optional[dict],
+) -> AsyncGenerator[str, None]:
+    """SSE generator that streams agent step events."""
+
+    async def event_stream() -> AsyncGenerator[str, None]:
+        yield f"data: {json.dumps({'event': 'start', 'trace_id': str(trace_id)})}\n\n"
+
+        async for step in engine.run_stream(
+            user_input=user_input, session=session, context=context
+        ):
+            payload = {
+                "event": step.get("event", "step"),
+                "trace_id": str(trace_id),
+                "data": step.get("data", {}),
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+
+            if step.get("event") == "human_input_required":
+                break
+            if step.get("event") in ("completed", "failed", "interrupted"):
+                break
+
+        yield f"data: {json.dumps({'event': 'done', 'trace_id': str(trace_id)})}\n\n"
+
+    async for line in event_stream():
+        yield line
+
+
+@router.post("/agents/{id}/stream")
+async def stream_agent(
+    id: UUID,
+    data: AgentRunRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run an agent and stream step events via SSE."""
+    tenant_id = getattr(request.state, "tenant_id", None)
+    _ensure_agents_initialized()
+
+    definition = agent_registry.get(id)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Agent {id} not found")
+
+    engine = AgentEngine(db=db, tenant_id=tenant_id, definition=definition)
+    trace_id = data.session_id or engine.new_trace_id()
+    session = AgentSession(session_id=trace_id, agent_id=id, tenant_id=tenant_id)
+
+    return StreamingResponse(
+        _agent_sse_generator(
+            engine=engine,
+            session=session,
+            trace_id=trace_id,
+            user_input=data.input,
+            context=data.context,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

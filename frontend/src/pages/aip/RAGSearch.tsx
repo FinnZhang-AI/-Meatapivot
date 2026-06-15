@@ -1,14 +1,24 @@
 import { useState } from 'react'
-import { useRAGQuery } from '../../hooks/useAIP'
+import { useRAGQuery, usePromptTemplates } from '../../hooks/useAIP'
 import type { RAGSource } from '../../types/aip'
 
 export default function RAGSearch() {
   const [query, setQuery] = useState('')
   const { mutateAsync: ragQuery, isPending, data: result } = useRAGQuery()
+  const { data: promptTemplates } = usePromptTemplates(1, 100)
+  const [selectedPromptId, setSelectedPromptId] = useState('')
+  const [useLlamaIndex, setUseLlamaIndex] = useState(false)
 
   const handleSearch = async () => {
     if (!query.trim()) return
-    await ragQuery({ query: query.trim(), topK: 5, searchMode: 'hybrid' })
+    await ragQuery({
+      query: query.trim(),
+      topK: 5,
+      searchMode: 'hybrid',
+      promptTemplateId: selectedPromptId || undefined,
+      promptVariables: selectedPromptId ? { query: query.trim() } : undefined,
+      useLlamaIndex,
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -30,6 +40,24 @@ export default function RAGSearch() {
           placeholder="输入问题，例如：查询所有VIP客户..."
           className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
+        <select
+          value={selectedPromptId}
+          onChange={(e) => setSelectedPromptId(e.target.value)}
+          className="px-3 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-sm dark:text-white"
+        >
+          <option value="">默认 Prompt</option>
+          {promptTemplates?.items.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 px-3 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-sm dark:text-white cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useLlamaIndex}
+            onChange={(e) => setUseLlamaIndex(e.target.checked)}
+          />
+          LlamaIndex
+        </label>
         <button
           onClick={handleSearch}
           disabled={isPending || !query.trim()}
