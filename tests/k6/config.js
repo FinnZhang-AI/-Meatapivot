@@ -38,19 +38,41 @@ export function login(http) {
   return res.json('access_token');
 }
 
-// Authenticated GET request
-export function authGet(http, token, path) {
+// Authenticated GET request. Optional `options` lets callers attach k6 tags
+// (e.g. for per-endpoint thresholds).
+export function authGet(http, token, path, options = {}) {
   return http.get(`${BASE_URL}${API_PREFIX}${path}`, {
     headers: { 'Authorization': `Bearer ${token}` },
+    ...options,
   });
 }
 
-// Authenticated POST request
-export function authPost(http, token, path, body) {
+// Authenticated POST request. Pass `options` for k6 tags / extra headers.
+export function authPost(http, token, path, body, options = {}) {
   return http.post(`${BASE_URL}${API_PREFIX}${path}`, JSON.stringify(body), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
+    ...options,
+  });
+}
+
+// Authenticated PUT request. Pass `options` for k6 tags / extra headers.
+export function authPut(http, token, path, body, options = {}) {
+  return http.put(`${BASE_URL}${API_PREFIX}${path}`, JSON.stringify(body), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    ...options,
+  });
+}
+
+// Authenticated DELETE request. Pass `options` for k6 tags / extra headers.
+export function authDelete(http, token, path, options = {}) {
+  return http.del(`${BASE_URL}${API_PREFIX}${path}`, null, {
+    headers: { 'Authorization': `Bearer ${token}` },
+    ...options,
   });
 }

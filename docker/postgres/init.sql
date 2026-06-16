@@ -184,3 +184,20 @@ CREATE INDEX IF NOT EXISTS idx_workshop_apps_tenant ON workshop_apps(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_workshop_apps_status ON workshop_apps(tenant_id, status);
 
 COMMENT ON TABLE workshop_apps IS 'Workshop app builder layouts (S3-3) — React Flow graphs persisted as JSONB';
+
+-- S4-1: LLM cost dashboard — per-tenant budget
+CREATE TABLE IF NOT EXISTS llm_budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    monthly_budget_cents INTEGER NOT NULL DEFAULT 10000,
+    alert_threshold_percent INTEGER NOT NULL DEFAULT 80,
+    model_overrides TEXT,
+    notes TEXT,
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_budgets_tenant ON llm_budgets(tenant_id);
+
+COMMENT ON TABLE llm_budgets IS 'Per-tenant LLM cost budgets and alert thresholds (S4-1)';

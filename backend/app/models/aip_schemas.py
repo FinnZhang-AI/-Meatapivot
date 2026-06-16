@@ -219,6 +219,65 @@ class LLMUsageTrendResponse(BaseModel):
     buckets: List[LLMUsageBucket]
 
 
+# ---------------------------------------------------------------------------
+# S4-1: LLM cost dashboard
+# ---------------------------------------------------------------------------
+
+
+class LLMCostByModel(BaseModel):
+    model: str
+    call_count: int
+    total_tokens: int
+    estimated_cost_cents: int
+
+
+class LLMCostTrendPoint(BaseModel):
+    bucket: str  # ISO date or datetime
+    call_count: int
+    total_tokens: int
+    estimated_cost_cents: int
+
+
+class LLMCostReport(BaseModel):
+    """Aggregated cost snapshot for the dashboard."""
+
+    tenant_id: str
+    days: int
+    group_by: str  # "day" or "hour"
+    total_calls: int
+    total_tokens: int
+    total_cost_cents: int
+    by_model: List[LLMCostByModel]
+    trend: List[LLMCostTrendPoint]
+    budget: Optional["LLMBudgetResponse"] = None
+    budget_state: str = "unknown"  # "ok" | "warning" | "exceeded" | "no_budget"
+
+
+class LLMBudgetCreate(BaseModel):
+    monthly_budget_cents: int = Field(..., ge=0)
+    alert_threshold_percent: int = Field(80, ge=0, le=100)
+    model_overrides: Optional[Dict[str, int]] = None
+    notes: Optional[str] = None
+
+
+class LLMBudgetUpdate(BaseModel):
+    monthly_budget_cents: Optional[int] = Field(None, ge=0)
+    alert_threshold_percent: Optional[int] = Field(None, ge=0, le=100)
+    model_overrides: Optional[Dict[str, int]] = None
+    notes: Optional[str] = None
+
+
+class LLMBudgetResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    monthly_budget_cents: int
+    alert_threshold_percent: int
+    model_overrides: Optional[Dict[str, int]] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class AvailableModelsResponse(BaseModel):
     models: List["ModelInfo"]
 
@@ -233,3 +292,4 @@ class ModelInfo(BaseModel):
 
 # Rebuild to resolve forward refs after both classes are defined
 AvailableModelsResponse.model_rebuild()
+LLMCostReport.model_rebuild()

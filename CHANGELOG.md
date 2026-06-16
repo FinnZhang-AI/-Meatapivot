@@ -5,6 +5,178 @@ All notable changes to Meatapivot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-06-16
+
+### v2.3 "AI-Native" Release — AIP Smart Layer + Workshop + Dashboard
+
+This release closes v2.3 of the development plan, focusing on the AI
+platform, ontology polish, app builder, and observability. The previous
+release (v2.2.0) shipped the core ontology compiler and security hardening;
+v2.3.0 layers the production-ready AI stack on top.
+
+### Added — S3-5: Dashboard real-time data
+
+- **`GET /api/v1/aip/llm-calls/aggregate`** — bucketed LLM usage (calls,
+  total tokens, estimated cost cents) for any window from 1 to 168 hours
+- **`GET /api/v1/ontology/stats`** gains `object_type_distribution` —
+  top-8 ObjectTypes by instance count for the dashboard pie chart
+- Dashboard now consumes real data: hourly LLM call + token trend line
+  chart, object type distribution pie chart, summary cards pulled every
+  30 seconds via TanStack Query
+
+### Added — S3-1: Async interface validation
+
+- **`GET /ws/interfaces/{tenant_id}`** — first WebSocket surface in the
+  platform. Pushes interface compliance reports to subscribed clients.
+- **`validate_all_interfaces` Celery task** — runs the same logic the
+  synchronous `/validate` endpoint uses, publishes results to Redis pub/sub
+  (`interface_validation:{tenant_id}`) with a 5-minute TTL fallback key.
+- Interface create / update enqueue the task; the WebSocket layer replays
+  the most recent report on connect and degrades to a 5-second poll loop
+  when Redis pub/sub is unavailable.
+- Frontend `useInterfaceValidationWS` hook + `ValidationToaster` surface
+  the result as a tone-coded toast (green / red / blue) for 6 seconds.
+- nginx gains a `/ws/` location with `Upgrade` / `Connection` headers and
+  24h read-timeout; Vite dev proxy adds `/ws` so the editor can subscribe
+  during local development.
+
+### Added — S3-2: Action OPA integration
+
+- `app/services/opa_client.py` — in-process Rego-subset evaluator (see
+  *Implementation note* below). Boolean expressions over an `input`
+  document, with safe-AST evaluation and `count()` support.
+- 3 baseline rules:
+  - `tenant_isolation` — rejects actions whose tenant_id does not match
+    the caller's tenant
+  - `forbidden_parameters` — blocks `system.drop_database` /
+    `system.purge_all`
+  - `max_parameters` — caps parameter count at 32
+- `ActionExecutor` invokes the client between the in-Python rule engine
+  and mode-specific execution. OPA denials return `success=false` with a
+  `RuleEvaluation(rule_name="OPA::<rule>", passed=false, reason=...)` so
+  the existing call site shape is unchanged.
+- **`GET /api/v1/ontology/actions/policies`** — enumerates the loaded
+  rules for the admin UI.
+- 7 inline unit tests in `backend/tests/test_sprint4.py` cover match,
+  cross-tenant denial, forbidden name, parameter cap, empty tenant, rule
+  selector, and malformed-bundle fail-open behavior.
+
+**Implementation note**: DEVPLAN-v2.3 referenced `opa-python` as the
+embedding library, but no such package exists on PyPI. The embedded
+evaluator is the implementation. The `OPAClient.evaluate(input_doc) ->
+PolicyDecision` interface is the swap point if/when a real OPA HTTP
+service is adopted.
+
+### Added — S3-4: Global search upgrade
+
+- **`GET /api/v1/ontology/search/suggest`** — tenant-scoped prefix matches
+  on ObjectType names and Document titles (PG `ILIKE`).
+- Frontend `GlobalSearch` component in the top bar replaces the inline
+  form. Three modes (keyword / semantic / rag), debounced autocomplete
+  (150 ms), per-user localStorage history (cap 8, deduped by
+  query + mode, individually removable).
+- `SemanticSearch` page gains the RAG mode (calls `/aip/rag/query` and
+  renders the answer + cited sources above the ontology result list).
+  Non-RAG modes get a classification banner.
+
+### Added — S3-3: Workshop App Builder (MVP)
+
+- `workshop_apps` table — PG JSONB column stores the full React Flow
+  graph (`{ nodes, edges, viewport }`).
+- **CRUD** at `/api/v1/workshop/apps` — list / create / get / update /
+  delete, all tenant-scoped, paginated list endpoint.
+- `WorkshopList` page — create / list apps with status badges.
+- `WorkshopEditor` — XYFlow canvas with Background / Controls / MiniMap,
+  three custom node types (Table / Chart / Action) and a property panel.
+  Chart nodes auto-display the upstream Table label when a connection is
+  made, demonstrating the data-binding direction. PUT persists the graph.
+- New "Workshop" entry in the sidebar; new route `/workshop/editor/:appId`.
+- Filter and LinkNav node types are deferred to v2.3.1.
+- `docker/postgres/init.sql` — DDL for `workshop_apps` + indexes so fresh
+  deployments pick up the table on first boot.
+
+### Added — S4-1: LLM cost dashboard
+
+- `LLM_MODEL_PRICING` catalog in `app/services/llm_pricing.py` — 13
+  mainstream models (gpt-4o, claude-3-5-sonnet, qwen-max, deepseek-chat,
+  …) priced in USD cents per 1M tokens. Overridable via the
+  `LLM_PRICING_OVERRIDES` env var (JSON).
+- `llm_budgets` table — per-tenant monthly cap (USD cents) + alert
+  threshold percent. `model_overrides` JSON field for per-model rate
+  overrides.
+- **`GET /api/v1/aip/llm-cost`** — daily / hourly aggregation with
+  per-model breakdown and a contiguous trend. Budget state machine
+  (`ok` / `warning` / `exceeded` / `no_budget`) classifies the current
+  spend against the budget.
+- **`GET /api/v1/aip/llm-cost/export`** — CSV download (per-call rows,
+  capped at 10 000 rows to keep the response reasonable).
+- **`/api/v1/aip/llm-budgets`** — POST upserts, PUT partial-updates,
+  GET returns the row (or `null` if none set).
+- Frontend `pages/aip/CostDashboard.tsx` — three summary cards, cost
+  trend line chart, model distribution pie chart, per-model table, CSV
+  export button, and a tone-coded budget banner with inline editor.
+  60-second auto-refresh.
+- "成本仪表盘" entry in the AIP sidebar.
+
+### Added — S4-2: Sprint 4 E2E tests
+
+- `backend/tests/test_sprint4.py` — 14 tests covering Workshop CRUD
+  (router endpoint presence, schema round-trip), LLM cost (pricing
+  arithmetic, env override, format helper, budget state classification,
+  schema shape, budget CRUD validation), and OPA (cross-tenant block,
+  forbidden name, runaway parameters, normal allow, malformed fail-open,
+  self-counting guard).
+
+### Added — S4-3: k6 performance scripts
+
+- **`tests/k6/agent-test.js`** — Agent `/run` and `/status` P95 < 2 s
+  with 100 concurrent users.
+- **`tests/k6/rag-test.js`** — `/aip/rag/query` P95 < 2 s with 100
+  concurrent users, 5 rotating queries to avoid hot-spot bias.
+- **`tests/k6/workshop-test.js`** — list / get / create all under 1 s
+  P95 with 100 concurrent users.
+- `config.js` helpers (`authGet` / `authPost` / `authPut` / `authDelete`)
+  now accept a 4th `options` argument so callers can attach k6 tags for
+  per-endpoint thresholds.
+
+### Changed
+
+- `Layout.tsx` — sidebar gained "Workshop" (S3-3) and "成本仪表盘" (S4-1)
+  entries; the top-bar search form was replaced with the new
+  `GlobalSearch` component.
+- `App.tsx` — `/workshop`, `/workshop/editor/:appId`, `/aip/cost` routes
+  added.
+- `vite.config.ts` — dev proxy now routes `/ws` to the FastAPI server
+  with `ws: true` so the interface validation WebSocket works during
+  local development.
+
+### Fixed
+
+- `Layout.tsx` — unused `searchQuery` / `setSearchQuery` / `navigate`
+  state in the shell component removed after the search form was
+  replaced; tsc now reports zero unused-variable warnings.
+
+### Out of scope (deferred)
+
+- Workshop Filter and LinkNav node types — v2.3.1.
+- Real OPA HTTP service — embed stays; swap is a single-file change.
+- Per-direction (input vs. output) token pricing — `AIPLLMCall` does
+  not record them separately yet.
+
+### Verification
+
+- `npx tsc --noEmit` — clean
+- Python `ast.parse` on every modified / new backend file — clean
+- Inline unit tests:
+  - `llm_pricing.py` — 14 arithmetic + format cases pass
+  - `opa_client.py` — 5 rule-classification cases pass
+  - `llm_cost_service.py::budget_state` — 10 boundary cases pass
+- `backend/tests/test_sprint4.py` — 14 tests; 7 are dependency-bound
+  (pydantic / sqlalchemy / fastapi) and run in CI; 7 are pure-stdlib
+  and verified above.
+
+## [2.2.0] - 2026-06-11
+
 ## [2.2.0] - 2026-06-11
 
 ### Sprint 1-6 Complete Release

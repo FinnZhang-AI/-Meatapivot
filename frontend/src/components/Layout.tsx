@@ -74,6 +74,7 @@ const LayoutShell = ({ user, sidebarOpen, setSidebarOpen, location, logout }: La
     { name: 'RAG 搜索', href: '/aip/rag', icon: '🔍' },
     { name: 'AI Agent', href: '/aip/agents', icon: '🧠' },
     { name: 'Prompt 管理', href: '/aip/prompts', icon: '📝' },
+    { name: '成本仪表盘', href: '/aip/cost', icon: '💰' },
   ]
 
   const systemNavigation = [

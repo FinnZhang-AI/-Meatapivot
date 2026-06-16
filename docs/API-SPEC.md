@@ -880,5 +880,177 @@ X-Tenant-ID: <tenant_uuid>
 
 ---
 
+## 9. v2.3.0 新增端点
+
+> 本节记录 v2.3.0 (2026-06-16) 相对 v2.2.0 的新增端点。旧端点的语义保持不变。
+
+### 9.1 Interface Validation WebSocket (S3-1)
+
+#### WS `/ws/interfaces/{tenant_id}`
+长连接。服务端在以下时刻推送 JSON 文本帧：
+- 连接建立时，立即回放最近一次报告（若有）
+- Interface 创建 / 更新后，Celery 任务完成后推送新报告
+
+**帧格式**：
+```json
+{
+  "status": "completed",
+  "tenant_id": "uuid",
+  "interfaces_total": 3,
+  "interfaces_failed": 1,
+  "results": [
+    {
+      "interface_id": "uuid",
+      "interface_name": "string",
+      "implementations_total": 4,
+      "passed": 3,
+      "failed": 1,
+      "details": [
+        {
+          "object_type_id": "uuid",
+          "object_type_name": "string",
+          "passed": false,
+          "missing_properties": ["emp_id"],
+          "missing_links": []
+        }
+      ]
+    }
+  ],
+  "completed_at": "2026-06-16T12:34:56.789Z"
+}
+```
+
+**退化行为**：当 Redis pub/sub 不可用时，服务端降级为每 5 秒轮询 `interface_validation:latest:{tenant_id}` 键。
+
+### 9.2 Action OPA Policies (S3-2)
+
+#### GET `/ontology/actions/policies`
+列出当前加载的 OPA 策略规则。
+
+**Response**:
+```json
+{
+  "rules": [
+    {"name": "tenant_isolation", "description": "Rejects actions whose tenant_id does not match the caller's tenant."},
+    {"name": "forbidden_parameters", "description": "Disallows dangerous action names..."},
+    {"name": "max_parameters", "description": "Rejects actions that pass more than 32 parameters..."}
+  ],
+  "count": 3
+}
+```
+
+**OPA 拒绝响应**：`POST /ontology/action-types/{id}/execute` 在 OPA 拒绝时仍返回 200，但 body 里 `success=false`、`message="OPA_REJECTED: <reason>"`，并在 `rule_results` 数组中追加一条 `RuleEvaluation(rule_name="OPA::<rule>", passed=false)`。
+
+### 9.3 LLM Cost Dashboard (S4-1)
+
+#### GET `/aip/llm-cost`
+LLM 调用成本聚合。
+
+**Query 参数**：
+- `days` (1-90, 默认 30)
+- `group_by` ("day" | "hour", 默认 "day")
+
+**Response**:
+```json
+{
+  "tenant_id": "uuid",
+  "days": 30,
+  "group_by": "day",
+  "total_calls": 142,
+  "total_tokens": 532000,
+  "total_cost_cents": 266,
+  "by_model": [
+    {"model": "gpt-4o", "call_count": 90, "total_tokens": 400000, "estimated_cost_cents": 200},
+    {"model": "claude-3-5-sonnet", "call_count": 52, "total_tokens": 132000, "estimated_cost_cents": 66}
+  ],
+  "trend": [
+    {"bucket": "2026-06-15T00:00", "call_count": 5, "total_tokens": 18000, "estimated_cost_cents": 9}
+  ],
+  "budget": null,
+  "budget_state": "no_budget"
+}
+```
+
+#### GET `/aip/llm-cost/export`
+CSV 下载。Query 参数同 `/aip/llm-cost` 但 `group_by` 不适用。返回 `text/csv`，文件名 `llm-cost-{days}d.csv`。
+
+**CSV 列**：`id, created_at, model, provider, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, status`
+
+#### GET `/aip/llm-budgets`
+返回当前租户的预算，无则 `null`。
+
+#### POST `/aip/llm-budgets`
+幂等创建或替换预算。Body:
+```json
+{
+  "monthly_budget_cents": 10000,
+  "alert_threshold_percent": 80,
+  "model_overrides": {"gpt-4o": 600},
+  "notes": "Cap for the next 60 days"
+}
+```
+
+#### PUT `/aip/llm-budgets`
+局部更新。404 if no budget set yet — use POST.
+
+**budget_state 取值**：`ok` (低于阈值)、`warning` (≥alert_threshold)、`exceeded` (≥100%)、`no_budget` (未设置或 cap=0)。
+
+### 9.4 Workshop App Builder (S3-3)
+
+#### POST `/workshop/apps`
+创建应用。Body:
+```json
+{
+  "name": "Sales Dashboard",
+  "description": "Q3 sales overview",
+  "graph": {
+    "nodes": [
+      {"id": "t1", "type": "table", "position": {"x": 0, "y": 0}, "data": {"label": "Sales Table"}},
+      {"id": "c1", "type": "chart", "position": {"x": 200, "y": 0}, "data": {"label": "Revenue Chart"}}
+    ],
+    "edges": [{"id": "e1", "source": "t1", "target": "c1", "animated": true}],
+    "viewport": {"x": 0, "y": 0, "zoom": 1}
+  }
+}
+```
+
+#### GET `/workshop/apps`
+分页列表。Query: `page`, `page_size` (1-100), `status` (可选).
+
+#### GET `/workshop/apps/{app_id}`
+获取单个应用。
+
+#### PUT `/workshop/apps/{app_id}`
+更新（全部或部分字段）。
+
+#### DELETE `/workshop/apps/{app_id}`
+删除（204 No Content）。
+
+**节点类型**（S3-3 MVP）：`table`、`chart`、`action`。S3-3.1 计划补 `filter` 和 `link-nav`。
+
+### 9.5 Ontology Search Suggest (S3-4)
+
+#### GET `/ontology/search/suggest`
+顶栏自动补全端点。
+
+**Query 参数**：
+- `q` (1-100 字符)
+- `limit` (1-20, 默认 8)
+
+**Response**:
+```json
+{
+  "query": "emp",
+  "suggestions": [
+    {"kind": "object_type", "id": "uuid", "label": "Employee", "hint": "员工"},
+    {"kind": "document", "id": "uuid", "label": "employee-handbook.pdf", "hint": "PDF"}
+  ],
+  "count": 2
+}
+```
+
+---
+
 > **版本历史**：
+> - v2.3.0 (2026-06-16): 新增 9.1-9.5 节（WS 接口验证、OPA policies、LLM cost、Workshop、Search suggest）
 > - v2.0 (2026-05-04): 基于 PRD v2.0 创建，覆盖 Ontology + AIP 全部端点

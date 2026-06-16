@@ -31,6 +31,9 @@ import PromptManager from './pages/aip/PromptManager'
 import WorkshopList from './pages/workshop/WorkshopList'
 import WorkshopEditor from './pages/workshop/WorkshopEditor'
 
+// LLM Cost Dashboard (S4-1)
+import CostDashboard from './pages/aip/CostDashboard'
+
 function App() {
   return (
     <AuthProvider>
@@ -66,6 +69,9 @@ function App() {
           {/* Workshop Routes (S3-3) */}
           <Route path="workshop" element={<WorkshopList />} />
           <Route path="workshop/editor/:appId" element={<WorkshopEditor />} />
+
+          {/* LLM Cost Dashboard (S4-1) */}
+          <Route path="aip/cost" element={<CostDashboard />} />
         </Route>
       </Routes>
     </AuthProvider>

@@ -220,6 +220,14 @@ try:
 except Exception as e:
     logger.warning(f"Workshop router not available: {e}")
 
+# LLM cost router (S4-1)
+try:
+    from app.routers import llm_cost
+    app.include_router(llm_cost.router, prefix=f"{settings.API_PREFIX}", tags=["AIP - Cost"])
+    logger.info("LLM cost router registered")
+except Exception as e:
+    logger.warning(f"LLM cost router not available: {e}")
+
 
 @app.get("/")
 @limiter.limit("60/minute")

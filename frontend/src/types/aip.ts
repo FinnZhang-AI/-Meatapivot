@@ -209,3 +209,61 @@ export interface ModelInfo {
   maxTokens: number
   supportsStreaming: boolean
 }
+
+// ---------------------------------------------------------------------------
+// S4-1: LLM cost dashboard
+// ---------------------------------------------------------------------------
+
+export type BudgetState = 'ok' | 'warning' | 'exceeded' | 'no_budget'
+
+export interface LLMCostByModel {
+  model: string
+  callCount: number
+  totalTokens: number
+  estimatedCostCents: number
+}
+
+export interface LLMCostTrendPoint {
+  bucket: string
+  callCount: number
+  totalTokens: number
+  estimatedCostCents: number
+}
+
+export interface LLMBudget {
+  id: string
+  tenantId: string
+  monthlyBudgetCents: number
+  alertThresholdPercent: number
+  modelOverrides?: Record<string, number> | null
+  notes?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface LLMCostReport {
+  tenantId: string
+  days: number
+  groupBy: 'day' | 'hour'
+  totalCalls: number
+  totalTokens: number
+  totalCostCents: number
+  byModel: LLMCostByModel[]
+  trend: LLMCostTrendPoint[]
+  budget?: LLMBudget | null
+  budgetState: BudgetState
+}
+
+export interface LLMBudgetCreate {
+  monthlyBudgetCents: number
+  alertThresholdPercent?: number
+  modelOverrides?: Record<string, number>
+  notes?: string
+}
+
+export interface LLMBudgetUpdate {
+  monthlyBudgetCents?: number
+  alertThresholdPercent?: number
+  modelOverrides?: Record<string, number>
+  notes?: string
+}
