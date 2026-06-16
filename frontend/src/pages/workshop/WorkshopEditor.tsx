@@ -27,7 +27,7 @@ interface WorkshopAppData {
 }
 
 // ---------------------------------------------------------------------------
-// Node components — S3-3 MVP: Table, Chart, Action (Filter and LinkNav later)
+// Node components — S3-3 MVP: Table, Chart, Action. S3-3.1 adds Filter, LinkNav.
 // ---------------------------------------------------------------------------
 
 interface BaseNodeProps {
@@ -81,10 +81,47 @@ const ActionNode = ({ data, selected }: BaseNodeProps) => (
   </NodeShell>
 )
 
+// S3-3.1: Filter node. Consumes a Table node's instance list and emits
+// a filtered subset (config-only at this stage; runtime is wired in v2.4).
+const FilterNode = ({ data, selected }: BaseNodeProps) => {
+  const field = (data.field as string) || ''
+  const operator = (data.operator as string) || '=='
+  const value = (data.value as string) || ''
+  const summary = field ? `${field} ${operator} ${value}` : '未配置过滤条件'
+  return (
+    <NodeShell kind="Filter" label={data.label as string} color="bg-violet-500" selected={selected}>
+      <p className="text-xs text-slate-500 mt-1 truncate" title={summary}>
+        {summary}
+      </p>
+    </NodeShell>
+  )
+}
+
+// S3-3.1: LinkNav node. Consumes a Table node and navigates to a related
+// object via a configured LinkType. The runtime will query the KG; for
+// now this stores the link + target type so the property panel is
+// functional.
+const LinkNavNode = ({ data, selected }: BaseNodeProps) => {
+  const linkType = (data.linkTypeName as string) || ''
+  const targetType = (data.targetObjectType as string) || ''
+  const summary = linkType
+    ? `${linkType} → ${targetType || '?'}`
+    : '未配置 LinkType'
+  return (
+    <NodeShell kind="LinkNav" label={data.label as string} color="bg-cyan-500" selected={selected}>
+      <p className="text-xs text-slate-500 mt-1 truncate" title={summary}>
+        {summary}
+      </p>
+    </NodeShell>
+  )
+}
+
 const nodeTypes = {
   table: TableNode,
   chart: ChartNode,
   action: ActionNode,
+  filter: FilterNode,
+  linknav: LinkNavNode,
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +132,8 @@ const WORKSPACE_KINDS = [
   { type: 'table', label: 'Object Table', desc: '查询某 ObjectType 的实例' },
   { type: 'chart', label: 'Chart', desc: '消费上游数据画图' },
   { type: 'action', label: 'Action Button', desc: '触发 Action' },
+  { type: 'filter', label: 'Filter', desc: '按条件过滤上游数据' },
+  { type: 'linknav', label: 'Link Navigator', desc: '按 LinkType 跳到关联对象' },
 ]
 
 const WorkshopEditor = () => {
@@ -180,6 +219,28 @@ const WorkshopEditor = () => {
     setNodes((nds) =>
       nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, label } } : n))
     )
+    if (selectedNode && selectedNode.id === id) {
+      setSelectedNode((prev) =>
+        prev ? { ...prev, data: { ...prev.data, label } } : prev
+      )
+    }
+  }
+
+  // Generic per-field data updater. Used by the node-specific property
+  // forms (filter.field, linknav.linkTypeName, etc.).
+  const updateNodeData = (id: string, patch: Record<string, unknown>) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, ...patch } } : n
+      )
+    )
+    if (selectedNode && selectedNode.id === id) {
+      setSelectedNode((prev) =>
+        prev
+          ? { ...prev, data: { ...prev.data, ...patch } }
+          : prev
+      )
+    }
   }
 
   const removeNode = (id: string) => {
@@ -317,6 +378,82 @@ const WorkshopEditor = () => {
                   ({Math.round(selectedNode.position.x)}, {Math.round(selectedNode.position.y)})
                 </p>
               </div>
+
+              {selectedNode.type === 'filter' && (
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-2">
+                  <p className="text-xs uppercase tracking-wider text-slate-400">过滤条件</p>
+                  <div>
+                    <label className="text-xs text-slate-500">字段</label>
+                    <input
+                      type="text"
+                      value={(selectedNode.data.field as string) || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { field: e.target.value })}
+                      placeholder="例如: status"
+                      className="w-full mt-1 px-2 py-1.5 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">操作符</label>
+                    <select
+                      value={(selectedNode.data.operator as string) || '=='}
+                      onChange={(e) => updateNodeData(selectedNode.id, { operator: e.target.value })}
+                      className="w-full mt-1 px-2 py-1.5 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    >
+                      <option value="==">等于 ==</option>
+                      <option value="!=">不等于 !=</option>
+                      <option value=">">大于 &gt;</option>
+                      <option value=">=">大于等于 &gt;=</option>
+                      <option value="<">小于 &lt;</option>
+                      <option value="<=">小于等于 &lt;=</option>
+                      <option value="contains">包含 contains</option>
+                      <option value="in">在...中 in</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">值</label>
+                    <input
+                      type="text"
+                      value={(selectedNode.data.value as string) || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
+                      placeholder="例如: active"
+                      className="w-full mt-1 px-2 py-1.5 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    运行时按 <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">field operator value</code> 过滤上游 Table
+                  </p>
+                </div>
+              )}
+
+              {selectedNode.type === 'linknav' && (
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-2">
+                  <p className="text-xs uppercase tracking-wider text-slate-400">链接导航</p>
+                  <div>
+                    <label className="text-xs text-slate-500">LinkType 名称</label>
+                    <input
+                      type="text"
+                      value={(selectedNode.data.linkTypeName as string) || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { linkTypeName: e.target.value })}
+                      placeholder="例如: BELONGS_TO"
+                      className="w-full mt-1 px-2 py-1.5 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">目标 ObjectType</label>
+                    <input
+                      type="text"
+                      value={(selectedNode.data.targetObjectType as string) || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { targetObjectType: e.target.value })}
+                      placeholder="例如: Department"
+                      className="w-full mt-1 px-2 py-1.5 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    运行时按 LinkType 从上游对象跳到关联的 ObjectType
+                  </p>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => removeNode(selectedNode.id)}

@@ -5,6 +5,45 @@ All notable changes to Meatapivot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-06-16
+
+### Workshop App Builder — Filter and LinkNav node types
+
+Closes the v2.3.0 deferred items for the Workshop App Builder. The
+S3-3 MVP shipped with Table / Chart / Action node types; v2.3.1
+finishes the catalogue with the two originally scoped node types.
+
+### Added
+
+- **Filter node** (`type: "filter"`) — consumes the upstream Table
+  node's instance list and applies a property + operator + value
+  triple. Configurable from the property panel:
+  - `field` — which property to test (free text, e.g. `status`)
+  - `operator` — one of `==`, `!=`, `>`, `>=`, `<`, `<=`,
+    `contains`, `in`
+  - `value` — the comparison value (free text)
+  - The node card shows a live summary like `status == active`.
+- **LinkNav node** (`type: "linknav"`) — consumes a Table node and
+  navigates to a related ObjectType via a configured LinkType.
+  Configurable from the property panel:
+  - `linkTypeName` — the LinkType name (e.g. `BELONGS_TO`)
+  - `targetObjectType` — the target ObjectType (e.g. `Department`)
+  - The node card shows a live summary like `BELONGS_TO → Department`.
+- Both node types are added to the left-side component panel; they
+  serialize through the same JSONB `graph` column with no backend
+  schema change.
+- `test_workshop_v231_filter_and_linknav_nodes_persist` — new
+  contract test in `backend/tests/test_sprint4.py` covering
+  the new node data shape on the Workshop create / update path.
+
+### Notes
+
+- Both nodes render the configuration as a static summary string
+  on the canvas. Runtime evaluation of the filter / navigation
+  expression is part of the Workshop executor (tracked in v2.4).
+
+## [2.3.0] - 2026-06-16
+
 ## [2.3.0] - 2026-06-16
 
 ### v2.3 "AI-Native" Release — AIP Smart Layer + Workshop + Dashboard

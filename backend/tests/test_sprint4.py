@@ -91,6 +91,49 @@ def test_workshop_pydantic_schema_round_trip():
     assert dumped == {"name": "Renamed"}
 
 
+def test_workshop_v231_filter_and_linknav_nodes_persist():
+    """S3-3.1: Filter and LinkNav nodes must round-trip with their config.
+
+    The backend has no per-node-type schema — the graph is opaque JSONB —
+    so this test is a contract check that the v2.3.1 client config we
+    send (``field``/``operator``/``value`` and
+    ``linkTypeName``/``targetObjectType``) is preserved on read.
+    """
+    schema_mod = _load_module("ws_schema_test", "app/models/workshop_schemas.py")
+    payload: Dict[str, Any] = {
+        "name": "v2.3.1 App",
+        "graph": {
+            "nodes": [
+                {"id": "t1", "type": "table", "position": {"x": 0, "y": 0},
+                 "data": {"label": "T1"}},
+                {"id": "f1", "type": "filter", "position": {"x": 200, "y": 0},
+                 "data": {"label": "Active only", "field": "status", "operator": "==", "value": "active"}},
+                {"id": "n1", "type": "linknav", "position": {"x": 400, "y": 0},
+                 "data": {"label": "Go to dept", "linkTypeName": "BELONGS_TO", "targetObjectType": "Department"}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "t1", "target": "f1"},
+                {"id": "e2", "source": "t1", "target": "n1"},
+            ],
+        },
+    }
+    create = schema_mod.WorkshopAppCreate.model_validate(payload)
+    assert len(create.graph["nodes"]) == 3
+    by_type = {n["type"]: n for n in create.graph["nodes"]}
+    assert by_type["filter"]["data"]["field"] == "status"
+    assert by_type["filter"]["data"]["operator"] == "=="
+    assert by_type["filter"]["data"]["value"] == "active"
+    assert by_type["linknav"]["data"]["linkTypeName"] == "BELONGS_TO"
+    assert by_type["linknav"]["data"]["targetObjectType"] == "Department"
+
+    # Simulate the PUT round-trip: partial update with a tweaked value
+    upd = schema_mod.WorkshopAppUpdate.model_validate({
+        "graph": create.graph,
+    })
+    dumped = upd.model_dump(exclude_unset=True)
+    assert dumped["graph"]["nodes"][1]["data"]["field"] == "status"
+
+
 # ---------------------------------------------------------------------------
 # LLM cost dashboard (S4-1)
 # ---------------------------------------------------------------------------

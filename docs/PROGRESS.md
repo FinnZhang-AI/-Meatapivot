@@ -2,7 +2,29 @@
 
 > **生成日期**: 2026-06-16
 > **验证方式**: 逐文件 git log + 代码检查
-> **整体进度**: v2.3.0 Release — Sprint 1-4 完成 / v2.3 全部 16 任务落地
+> **整体进度**: v2.3.1 Release — Workshop 节点补完 / v2.3 全部任务落地
+
+---
+
+## v2.3.1 Release 状态 (2026-06-16)
+
+> v2.3.0 收尾的 Workshop 节点 deferred（Filter / LinkNav）补完。
+> 范围纯前端，零后端 schema 变更。
+> 完整说明见 CHANGELOG.md v2.3.1 章节。
+
+### 任务状态
+
+| 编号 | 任务 | 状态 | 证据 |
+|------|------|------|------|
+| v2.3.1-F | Workshop Filter 节点 | ✅ DONE | WorkshopEditor.tsx FilterNode + 属性面板 (field/operator/value) |
+| v2.3.1-L | Workshop LinkNav 节点 | ✅ DONE | WorkshopEditor.tsx LinkNavNode + 属性面板 (linkTypeName/targetObjectType) |
+| v2.3.1-T | 节点持久化测试 | ✅ DONE | test_sprint4.py::test_workshop_v231_filter_and_linknav_nodes_persist |
+
+### 模块完成度
+
+| 模块 | v2.3.0 | v2.3.1 |
+|------|--------|--------|
+| APP-F | ~85% | ~90%（Workshop 全部 5 节点类型上线） |
 
 ---
 
