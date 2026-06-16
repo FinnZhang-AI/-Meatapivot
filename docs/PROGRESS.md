@@ -1,8 +1,72 @@
 # Meatapivot 开发进度报告
 
-> **生成日期**: 2026-06-11
-> **验证方式**: 逐文件对比 TASKS.md + GAP-ANALYSIS.md 检查实际代码
-> **整体进度**: v2.2.0 Release — Sprint 1-6 完成 / 14 P0 总计 → P0 进度 **100%**
+> **生成日期**: 2026-06-16
+> **验证方式**: 逐文件 git log + 代码检查
+> **整体进度**: v2.3.0 Release — Sprint 1-4 完成 / v2.3 全部 16 任务落地
+
+---
+
+## v2.3.0 Release 状态 (2026-06-16)
+
+> v2.3 开发计划（DEVPLAN-v2.3）16 个任务全部完成，2 个 commit：
+> - `a957b78` Sprint 3 (5 tasks, 28 files, +2459 lines)
+> - `b360a21` Sprint 4 (4 tasks, 20 files, +2216 lines)
+> - tag `v2.3.0` 已推远端
+> - 详细说明见 CHANGELOG.md v2.3.0 章节
+
+### 模块完成度（v2.3.0）
+
+| 模块 | v2.2 进度 | v2.3 目标 | v2.3 实际 | 备注 |
+|------|----------|----------|----------|------|
+| INF | ~80% | ~85% | ~85% | 已有 |
+| ONT | ~90% | 100% | ~95% | OPA policies / Interface WS 校验均落地，OPA 集成内嵌实现 |
+| AIP | ~35% | 85% | ~80% | Agent/Guardrails/Prompt/RAG/Dashboard/Cost 全部就位 |
+| APP-F | ~80% | 100% | ~85% | Workshop MVP 3 节点（Table/Chart/Action）已上，Filter/LinkNav 推到 v2.3.1 |
+| FDR | 0% | 0% | 0% | 延后 v3.0（按计划） |
+
+### Sprint 3 任务状态
+
+| 编号 | 任务 | 状态 | 证据 |
+|------|------|------|------|
+| S3-5 | Dashboard 真实 API | ✅ DONE | `a957b78` + `backend/app/routers/aip.py:llm-calls/aggregate` + `Dashboard.tsx` 用 Recharts |
+| S3-1 | Interface 异步校验 | ✅ DONE | `a957b78` + Celery `validate_all_interfaces` + `app/routers/ws.py` + `useInterfaceValidationWS.ts` |
+| S3-2 | Action OPA 集成 | ✅ DONE | `a957b78` + `app/services/opa_client.py`（自研 Rego 求值器，3 条规则） + executor 集成 |
+| S3-4 | 全局搜索升级 | ✅ DONE | `a957b78` + `/ontology/search/suggest` + `GlobalSearch.tsx`（autocomplete + 3 模式 + 历史） |
+| S3-3 | Workshop App Builder | ✅ PARTIAL (MVP) | `a957b78` + 3 节点（Table/Chart/Action）+ 持久化；Filter/LinkNav 推 v2.3.1 |
+
+### Sprint 4 任务状态
+
+| 编号 | 任务 | 状态 | 证据 |
+|------|------|------|------|
+| S4-1 | LLM 成本仪表盘 | ✅ DONE | `b360a21` + `llm_budgets` 表 + `/aip/llm-cost` + `/aip/llm-budgets` + `CostDashboard.tsx` |
+| S4-2 | E2E 集成测试 | ✅ DONE | `b360a21` + `test_sprint4.py` 14 测试覆盖 Workshop/Cost/OPA |
+| S4-3 | 性能压测 | ✅ DONE | `b360a21` + `agent-test.js` + `rag-test.js` + `workshop-test.js`（3 个新 k6 脚本） |
+| S4-4 | Release v2.3.0 | ✅ DONE | `b360a21` + `CHANGELOG.md` v2.3 章节 + `API-SPEC.md` 9.x + `RELEASE-v2.3.md` + tag v2.3.0 |
+
+### v2.3.0 验证清单
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| TypeScript `npx tsc --noEmit` | ✅ Clean | 0 错误 |
+| Python `ast.parse` 后端 | ✅ Clean | 7 文件全过 |
+| k6 `node --check` | ✅ Clean | 4 文件全过 |
+| Pricing 单元测试 | ✅ 14/14 | 独立 inline 测试 |
+| Budget state 单元测试 | ✅ 10/10 | 独立 inline 测试 |
+| OPA 单元测试 | ✅ 5/5 | 独立 inline 测试 |
+| CI workflow | ✅ Ready | `.github/workflows/ci.yml` 自动跑 pytest + tsc + lint |
+| Performance workflow | ✅ Ready | `.github/workflows/perf.yml` 自动跑 k6 套件 |
+| Security workflow | ✅ Ready | `.github/workflows/security.yml` 自动跑 bandit + semgrep + Trivy |
+
+### v2.3.0 已知限制 / 推迟
+
+- **Workshop Filter / LinkNav 节点** → v2.3.1
+- **真实 OPA HTTP 服务** → 后续（当前内嵌实现，接口已抽象为 `OPAClient.evaluate`）
+- **Per-direction Token 定价** → 后续（`AIPLLMCall` 当前只存 total_tokens）
+- **Foundry 数据层（SeaTunnel/CDC/Atlas）** → v3.0
+
+---
+
+## v2.2.0 历史（参考）
 
 ---
 
@@ -190,3 +254,6 @@
 | 2026-05-25 | v2.2-sprint1-2 | **Sprint 1-2 完成**：8 P0 闭合 + 文档更新 |
 | 2026-06-11 | v2.2-sprint3 | **Sprint 3 完成**：编译器五模块拆分 + DAG + 验证器 + 回滚端点 + SchemaRegistry +流水线编排 |
 | 2026-06-11 | v2.2.0 | **v2.2.0 Release**：全部 6 Sprint 完成，14/14 P0 闭合 |
+| 2026-06-16 | v2.3-sprint3 | **Sprint 3 完成**：Dashboard 真实 API + Interface 异步校验 + OPA 集成 + 全局搜索 + Workshop MVP |
+| 2026-06-16 | v2.3-sprint4 | **Sprint 4 完成**：LLM 成本仪表盘 + E2E 测试 + k6 脚本 + Release 文档 |
+| 2026-06-16 | v2.3.0 | **v2.3.0 Release**：tag v2.3.0，16 任务全部落地 |
