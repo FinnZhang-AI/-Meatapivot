@@ -201,3 +201,24 @@ CREATE TABLE IF NOT EXISTS llm_budgets (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_budgets_tenant ON llm_budgets(tenant_id);
 
 COMMENT ON TABLE llm_budgets IS 'Per-tenant LLM cost budgets and alert thresholds (S4-1)';
+
+-- V4-1: Workshop execution history
+CREATE TABLE IF NOT EXISTS workshop_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    app_id UUID NOT NULL REFERENCES workshop_apps(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'running',
+    graph_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    results JSONB NOT NULL DEFAULT '{}'::jsonb,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    duration_ms INTEGER,
+    triggered_by UUID REFERENCES users(id),
+    error_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_workshop_executions_app ON workshop_executions(app_id);
+CREATE INDEX IF NOT EXISTS idx_workshop_executions_tenant ON workshop_executions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_workshop_executions_status ON workshop_executions(tenant_id, status);
+
+COMMENT ON TABLE workshop_executions IS 'Per-run history of Workshop apps (V4-1) — graph snapshot + per-node output';
