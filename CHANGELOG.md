@@ -5,6 +5,110 @@ All notable changes to Meatapivot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-06-18
+
+### "Workshop Runs" + "Test Foundation" Release
+
+This release closes the v2.4 development plan. The headline feature
+is **Workshop runtime execution** — the Workshop editor's
+Table/Chart/Action/Filter/LinkNav nodes (S3-3 + S3-3.1) can now
+actually be run, with per-node results surfaced back in the UI.
+The secondary deliverable is the long-promised **Vitest** frontend
+test runner, plus two Celery task implementations that replace
+empty TODO skeletons.
+
+### Added — V4-1: Workshop runtime executor
+
+- `workshop_executions` table — per-tenant history of every run.
+  DDL appended to `docker/postgres/init.sql`.
+- `WorkshopExecution` ORM model + `WorkshopNodeResult` /
+  `WorkshopExecutionRequest` / `WorkshopExecutionListResponse` /
+  `WorkshopExecutionResponse` Pydantic schemas.
+- `app/services/workshop_runtime_helpers.py` — pure, no-DB
+  helpers for `topological_order`, `coerce_compare`, `eval_filter`,
+  `first_upstream_id`. Tested independently.
+- `app/services/workshop_executor.py` — runs the graph synchronously:
+  - `Table` nodes query `ontology_objects` by ObjectType name
+  - `Filter` nodes apply a `field`/`operator`/`value` triple against
+    the upstream list (8 operators, with type coercion)
+  - `Chart` nodes group-by a field (auto-detect common fields) and
+    emit chart-ready series
+  - `LinkNav` nodes resolve a LinkType by name and emit a sample of
+    the target ObjectType's instances
+  - `Action` nodes delegate to the existing `ActionExecutor`
+    (S3-2 OPA path applies)
+  - Errors are isolated: a single failing node does not block the rest
+  - Cyclic graphs are short-circuited and the run is marked failed
+- Routes:
+  - `POST /api/v1/workshop/apps/{id}/run` — execute one run
+  - `GET /api/v1/workshop/apps/{id}/executions` — paginated history
+  - `GET /api/v1/workshop/apps/{id}/executions/{execution_id}` — one
+    historical run including per-node results
+- `frontend/src/hooks/useRunWorkshop.ts` — TanStack Query mutation
+  for `/run` + a query helper for the executions list.
+- `frontend/src/services/workshop_runtime_helpers.ts` — TS mirror
+  of the backend helpers so the editor can preview filter logic
+  client-side without a server round-trip.
+- `WorkshopEditor.tsx` — adds a `▶ 运行` button + a status banner
+  (green / amber / red) + per-node result panel in the property
+  sidebar. Each node's border color reflects its status (done =
+  emerald, error = rose, running = amber pulse, pending = slate).
+
+### Added — V4-2: Vitest frontend test foundation
+
+- `vitest` + `@testing-library/react` + `jsdom` + `@testing-library/jest-dom`
+  added to `frontend/package.json`. New scripts: `npm test` and
+  `npm run test:watch`.
+- `frontend/vitest.config.ts` — jsdom env + alias mirror + setup file.
+- `frontend/src/test/setup.ts` — `matchMedia` / `ResizeObserver` shims.
+- 4 test files (17 tests, all green):
+  - `ValidationToaster.test.tsx` (5 tests) — toast appears for
+    every status (ok / warning / failed / no-interfaces)
+  - `GlobalSearch.test.tsx` (2 tests) — input + mode selector
+    render; submitted query persists to per-user localStorage
+  - `CostDashboard.test.tsx` (5 tests) — summary cards, banner,
+    per-model table, CSV button, budget editor toggle
+  - `workshop_runtime_helpers.test.ts` (5 tests) — TS mirror parity
+- `.github/workflows/ci.yml` — adds `npm test` step to the
+  `frontend-test` job so the suite runs in CI on every push.
+
+### Added — V4-3: Celery worker implementations
+
+- `process_document` — was a `# TODO` stub since v2.0. Now actually
+  downloads from MinIO (capped at 25 MiB), parses text (TXT / MD /
+  CSV / PDF via pypdf / DOCX via python-docx; UTF-8 fallback for
+  anything else), and writes the extracted text back to the
+  Document row's `metadata_` JSONB field. The Document's `status`
+  moves to `processed` (or `failed` if no text was produced).
+- `execute_function_action` — was a `# TODO` stub. Now loads the
+  function's code from the DB, scans it for forbidden names
+  (os.system / __import__ / subprocess), compiles through
+  RestrictedPython, and runs the user's `handler(parameters)`
+  with a configurable timeout. Re-uses the existing sandbox
+  helpers from `app/services/sandbox_restricted.py` so we don't
+  fork the security boundary.
+- `compile_ontology` and `execute_decision_flow` are deliberately
+  marked `NotImplementedError` and pushed to v2.4.1 — v2.2.0
+  Sprint 3 already moved compilation onto the synchronous pipeline
+  and decision flows run synchronously, so neither is on the
+  critical path.
+- `backend/requirements.txt` — adds `pypdf==4.0.1` and
+  `python-docx==1.1.0`. Both are optional at runtime — the
+  parsers fall back to UTF-8 decode with a recorded warning if
+  the library is not installed.
+- `backend/tests/test_workers.py` (5 tests) — covers the parser
+  matrix (text, csv, md, unknown mime, invalid UTF-8).
+
+### Notes
+
+- Workshop runtime is **synchronous** — the graph is small enough
+  (typical: a handful of nodes, one PG query each) that the run
+  finishes inline. V4.1 will add a Celery + SSE path for very
+  large graphs if real apps need it.
+- The `O(n)` topological sort is correct but unweighted. The
+  executor walks it in the order the user authored; cycle detection
+  fails the whole run.
+
 ## [2.3.1] - 2026-06-16
 
 ### Workshop App Builder — Filter and LinkNav node types

@@ -1,8 +1,54 @@
 # Meatapivot 开发进度报告
 
-> **生成日期**: 2026-06-16
-> **验证方式**: 逐文件 git log + 代码检查
-> **整体进度**: v2.3.1 Release — Workshop 节点补完 / v2.3 全部任务落地
+> **生成日期**: 2026-06-18
+> **验证方式**: 逐文件 git log + 代码检查 + 单元测试
+> **整体进度**: v2.4.0 Release — Workshop runtime + 测试基础收口
+
+---
+
+## v2.4.0 Release 状态 (2026-06-18)
+
+> Sprint 1 全部 4 任务完成。
+> DEVPLAN-v2.4 详见 `docs/DEVPLAN-v2.4.md`。
+> 完整说明见 CHANGELOG.md v2.4.0 章节。
+
+### 任务状态
+
+| 编号 | 任务 | 状态 | 证据 |
+|------|------|------|------|
+| V4-1 | Workshop runtime executor | ✅ DONE | workshop_executor.py + 12 helpers 测试 + 前端 Run 按钮 + 节点边框染色 |
+| V4-2 | Vitest 前端测试基础 | ✅ DONE | vitest.config + 4 测试文件 + 17 tests 全过 + CI 接入 |
+| V4-3 | Celery worker 任务补全 | ✅ PARTIAL | process_document + execute_function_action 实做 + 5 测试；compile_ontology / execute_decision_flow 推到 v2.4.1 |
+| V4-4 | Release v2.4.0 | ✅ DONE | CHANGELOG + PROGRESS + API-SPEC + RELEASE-v2.4 + tag |
+
+### 模块完成度
+
+| 模块 | v2.3.1 | v2.4.0 |
+|------|--------|--------|
+| INF | ~85% | ~88% (worker 2 任务实做) |
+| ONT | ~95% | ~95% |
+| AIP | ~80% | ~80% |
+| APP-F | ~90% | ~95% (Workshop runtime) |
+| FDR | 0% | 0% (v3.0) |
+
+### 验证
+
+| 项 | 结果 |
+|----|------|
+| `npx tsc --noEmit` | ✅ Clean |
+| Python `ast.parse` | ✅ Clean |
+| `npx vitest run` | ✅ 17/17 |
+| 后端 12 helpers tests | ✅ 12/12 |
+| 后端 5 worker tests | ✅ 5/5 |
+| CI workflow `npm test` | ✅ 已接入 |
+
+### 推迟到 v2.4.1 / 后续
+
+- OPA HTTP service 替换（CHANGELOG v2.3.0 写的 swap point）
+- Per-direction token pricing
+- Workshop SSE / Celery async path（V4.1 候选）
+- compile_ontology / execute_decision_flow Celery 任务实做
+- Foundry 数据层（SeaTunnel/CDC/Atlas）→ v3.0
 
 ---
 

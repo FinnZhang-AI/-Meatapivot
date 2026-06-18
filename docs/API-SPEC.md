@@ -1051,6 +1051,77 @@ CSV 下载。Query 参数同 `/aip/llm-cost` 但 `group_by` 不适用。返回 `
 
 ---
 
+## 10. v2.4.0 新增端点
+
+> v2.4.0 相对 v2.3.x 的新增端点。S3-3 引入的 `/workshop/apps` CRUD 仍在 9.4 节。
+
+### 10.1 Workshop Runtime Execution (V4-1)
+
+#### POST `/workshop/apps/{app_id}/run`
+同步执行一个 Workshop app 一次，返回每节点结果。
+
+**Request Body** (`WorkshopExecutionRequest`):
+```json
+{
+  "node_overrides": {
+    "action_1": {"parameters": {"reason": "manual override"}}
+  }
+}
+```
+
+**Response** (`WorkshopExecutionResponse`):
+```json
+{
+  "id": "uuid",
+  "app_id": "uuid",
+  "tenant_id": "uuid",
+  "status": "completed",  // running | completed | partial | failed
+  "results": {
+    "table_1": {
+      "node_id": "table_1",
+      "node_type": "table",
+      "status": "done",   // pending | running | done | error | skipped
+      "output": {"node_id": "table_1", "items": [...], "count": 42},
+      "error": null,
+      "duration_ms": 23
+    },
+    "filter_1": {
+      "node_id": "filter_1",
+      "node_type": "filter",
+      "status": "done",
+      "output": {"items": [...], "count": 12, "filter": {"field": "status", "operator": "==", "value": "active"}},
+      "error": null,
+      "duration_ms": 5
+    }
+  },
+  "started_at": "2026-06-18T12:00:00Z",
+  "completed_at": "2026-06-18T12:00:00.123Z",
+  "duration_ms": 123,
+  "error_message": null
+}
+```
+
+**节点类型 → 输出格式**：
+- `table`：`{node_id, object_type_id, items: [...], count}`
+- `filter`：`{node_id, items, count, filter: {field, operator, value}}`
+- `chart`：`{node_id, group_by, series: [{name, value}], total}`
+- `linknav`：`{node_id, link_type_id, link_type_name, target_object_type_id, items, count}`
+- `action`：`{node_id, action_type_id, action_type_name, success, message, result, blocked}`
+
+**状态机**：
+- `completed` — 所有节点 done
+- `partial` — 至少一个 error、至少一个 done
+- `failed` — 所有节点 error，或图有环
+
+#### GET `/workshop/apps/{app_id}/executions`
+分页列出历史运行。Query: `page`, `page_size` (1-100).
+
+#### GET `/workshop/apps/{app_id}/executions/{execution_id}`
+获取单次历史运行完整 per-node 结果。
+
+---
+
 > **版本历史**：
+> - v2.4.0 (2026-06-18): 新增 10.x 节（Workshop runtime + executions）
 > - v2.3.0 (2026-06-16): 新增 9.1-9.5 节（WS 接口验证、OPA policies、LLM cost、Workshop、Search suggest）
 > - v2.0 (2026-05-04): 基于 PRD v2.0 创建，覆盖 Ontology + AIP 全部端点
