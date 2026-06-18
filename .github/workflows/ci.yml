@@ -126,6 +126,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Run npm audit
         run: |
           npm audit --json --audit-level=high > npm-audit.json || true
