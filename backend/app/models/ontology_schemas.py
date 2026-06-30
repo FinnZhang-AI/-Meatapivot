@@ -605,6 +605,24 @@ class DAGImpactResponse(BaseModel):
     impact_count: int
 
 
+class ObjectTypeDistributionItem(BaseModel):
+    name: str
+    display_name: Optional[str] = None
+    count: int
+
+
+class OntologyStatsResponse(BaseModel):
+    tenant_id: UUID
+    object_types: int
+    link_types: int
+    interfaces: int
+    action_types: int
+    functions: int
+    objects: int
+    links: int
+    object_type_distribution: List[ObjectTypeDistributionItem]
+
+
 PropertyDef.model_rebuild()
 InterfaceLinkRequirement.model_rebuild()
 ActionParameter.model_rebuild()

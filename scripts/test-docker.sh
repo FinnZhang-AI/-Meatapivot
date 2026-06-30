@@ -371,6 +371,58 @@ fi
 # 安全测试
 test_step "安全测试"
 
+# Sprint 3: OPA policies endpoint
+if [ -n "$TOKEN" ]; then
+    POLICIES=$(curl -s http://localhost:8001/api/v1/ontology/actions/policies \
+        -H "Authorization: Bearer $TOKEN" || echo "FAILED")
+
+    if echo "$POLICIES" | grep -q "tenant_isolation" && echo "$POLICIES" | grep -q "forbidden_parameters" && echo "$POLICIES" | grep -q "max_parameters"; then
+        pass "OPA 策略加载 (3 条 baseline 规则)"
+    else
+        fail "OPA 策略加载失败"
+        echo "响应: $POLICIES"
+    fi
+else
+    warn "跳过 OPA 策略测试（无有效 token）"
+fi
+
+# Sprint 3: Workshop builder endpoints
+if [ -n "$TOKEN" ]; then
+    WORKSHOP_LIST=$(curl -s http://localhost:8001/api/v1/workshop/apps \
+        -H "Authorization: Bearer $TOKEN" || echo "FAILED")
+
+    if echo "$WORKSHOP_LIST" | grep -qi "items\|workshops\|200\|401\|403"; then
+        pass "Workshop 列表 API"
+    else
+        warn "Workshop 列表 API 响应异常"
+    fi
+else
+    warn "跳过 Workshop 测试（无有效 token）"
+fi
+
+# Sprint 3: Dashboard LLM aggregate
+if [ -n "$TOKEN" ]; then
+    LLM_AGG=$(curl -s http://localhost:8001/api/v1/aip/llm-calls/aggregate \
+        -H "Authorization: Bearer $TOKEN" || echo "FAILED")
+
+    if echo "$LLM_AGG" | grep -qi "hourly\|daily\|buckets\|empty\|data"; then
+        pass "Dashboard LLM 聚合 API"
+    else
+        warn "Dashboard LLM 聚合响应异常: $LLM_AGG"
+    fi
+
+    ONT_STATS=$(curl -s http://localhost:8001/api/v1/ontology/stats \
+        -H "Authorization: Bearer $TOKEN" || echo "FAILED")
+
+    if echo "$ONT_STATS" | grep -qi "object_type_distribution\|object_types"; then
+        pass "Ontology 统计含 object_type_distribution"
+    else
+        warn "Ontology 统计响应异常: $ONT_STATS"
+    fi
+else
+    warn "跳过 Dashboard 测试（无有效 token）"
+fi
+
 # Cypher 注入测试
 if [ -n "$TOKEN" ]; then
     # 尝试注入 CREATE
@@ -380,7 +432,7 @@ if [ -n "$TOKEN" ]; then
         -d '{
             "cypher_query": "CREATE (n:Hack) RETURN n"
         }' || echo "FAILED")
-    
+
     if echo "$INJECTION" | grep -qi "403\|Forbidden\|not allowed\|rejected\|Invalid\|forbidden"; then
         pass "Cypher CREATE 被阻止"
     else

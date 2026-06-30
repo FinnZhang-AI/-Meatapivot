@@ -20,7 +20,8 @@ from app.models.ontology_schemas import (
     OntologyLinkCreate, OntologyLinkResponse,
     SubgraphResponse, GraphNode, GraphEdge, GraphMetadata,
     PropertyDef, OntologySearchRequest, OntologySearchResponse,
-    ValidationResponse, DAGCycleResponse
+    ValidationResponse, DAGCycleResponse,
+    OntologyStatsResponse, ObjectTypeDistributionItem,
 )
 from app.routers.auth import get_current_user, UserResponse
 from app.services.neo4j_client import neo4j_client
@@ -890,3 +891,98 @@ async def detect_dag_cycle(
             cycle_description=f"Circular dependency detected: {cycle_str}",
         )
     return DAGCycleResponse(has_cycle=False)
+
+
+@router.get("/stats", response_model=OntologyStatsResponse)
+async def get_ontology_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Return high-level ontology statistics for the current tenant."""
+    tenant_id = await _get_tenant_id(current_user)
+
+    object_type_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyObjectType)
+            .where(OntologyObjectType.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    link_type_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyLinkType)
+            .where(OntologyLinkType.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    interface_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyInterface)
+            .where(OntologyInterface.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    action_type_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyActionType)
+            .where(OntologyActionType.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    function_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyFunction)
+            .where(OntologyFunction.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    object_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyObject)
+            .where(OntologyObject.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    link_count = (
+        await db.execute(
+            select(func.count()).select_from(OntologyLink)
+            .where(OntologyLink.tenant_id == tenant_id)
+        )
+    ).scalar() or 0
+
+    ot_rows = await db.execute(
+        select(OntologyObjectType.id, OntologyObjectType.name, OntologyObjectType.display_name)
+        .where(OntologyObjectType.tenant_id == tenant_id)
+    )
+    object_types = ot_rows.all()
+
+    distribution: List[ObjectTypeDistributionItem] = []
+    if object_types:
+        ot_ids = [row.id for row in object_types]
+        counts_result = await db.execute(
+            select(OntologyObject.object_type_id, func.count())
+            .where(OntologyObject.object_type_id.in_(ot_ids))
+            .where(OntologyObject.tenant_id == tenant_id)
+            .group_by(OntologyObject.object_type_id)
+        )
+        counts_by_id = {row.object_type_id: row[1] for row in counts_result.all()}
+        distribution = [
+            ObjectTypeDistributionItem(
+                name=row.name,
+                display_name=row.display_name,
+                count=counts_by_id.get(row.id, 0),
+            )
+            for row in object_types
+        ]
+
+    return OntologyStatsResponse(
+        tenant_id=tenant_id,
+        object_types=object_type_count,
+        link_types=link_type_count,
+        interfaces=interface_count,
+        action_types=action_type_count,
+        functions=function_count,
+        objects=object_count,
+        links=link_count,
+        object_type_distribution=distribution,
+    )

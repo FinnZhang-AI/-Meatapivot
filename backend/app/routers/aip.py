@@ -7,7 +7,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func
+from datetime import timedelta
+from sqlalchemy import select, func, BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -613,7 +614,7 @@ async def aggregate_llm_usage(
     # Use PG date_trunc to bucket; (1.0 / bucket_seconds) keeps a numeric ratio
     # that lets us pull the bucket start with to_timestamp.
     epoch = func.extract("epoch", AIPLLMCall.created_at)
-    bucket_idx = func.floor(epoch / bucket_seconds).cast(type_=AIPLLMCall.id.type)
+    bucket_idx = func.floor(epoch / bucket_seconds).cast(type_=BigInteger)
     bucket_start = func.to_timestamp(bucket_idx * bucket_seconds)
 
     rows = await db.execute(
@@ -626,7 +627,7 @@ async def aggregate_llm_usage(
             ),
         )
         .where(AIPLLMCall.tenant_id == tenant_id)
-        .where(AIPLLMCall.created_at >= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, hours))
+        .where(AIPLLMCall.created_at >= func.now() - timedelta(hours=hours))
         .group_by("bucket")
         .order_by("bucket")
     )

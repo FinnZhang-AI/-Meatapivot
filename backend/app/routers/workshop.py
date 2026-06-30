@@ -30,7 +30,7 @@ from app.services.workshop_executor import run_workshop
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/workshop/apps", tags=["Workshop"])
+router = APIRouter(prefix="/apps", tags=["Workshop"])
 
 
 @router.post("", response_model=WorkshopAppResponse, status_code=status.HTTP_201_CREATED)

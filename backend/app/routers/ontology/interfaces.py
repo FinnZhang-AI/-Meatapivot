@@ -59,7 +59,15 @@ async def create_interface(
     db.add(interface)
     await db.flush()
     await db.refresh(interface)
-    
+
+    # S3-1: async re-validation trigger. A new interface may affect existing
+    # ObjectType compliance; re-check every active interface for the tenant.
+    try:
+        from app.worker.tasks import validate_all_interfaces
+        validate_all_interfaces.delay(str(tenant_id))
+    except Exception as exc:  # pragma: no cover - degraded path
+        logger.warning(f"Failed to enqueue interface validation: {exc}")
+
     return InterfaceResponse(
         id=interface.id,
         tenant_id=interface.tenant_id,
@@ -192,7 +200,17 @@ async def update_interface(
     
     await db.flush()
     await db.refresh(iface)
-    
+
+    # S3-1: kick off async re-validation. The change might invalidate an
+    # existing ObjectType's compliance, so we re-check every active interface
+    # for the tenant. Result is published to Redis pub/sub and pushed to WS
+    # clients (see app.routers.ws).
+    try:
+        from app.worker.tasks import validate_all_interfaces
+        validate_all_interfaces.delay(str(tenant_id))
+    except Exception as exc:  # pragma: no cover - degraded path
+        logger.warning(f"Failed to enqueue interface validation: {exc}")
+
     return InterfaceResponse(
         id=iface.id,
         tenant_id=iface.tenant_id,

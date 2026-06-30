@@ -292,6 +292,34 @@ async def execute_action(
     )
 
 
+@router.get("/actions/policies")
+async def list_action_policies(
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Enumerate the active OPA policy rules for the action gateway.
+
+    S3-2: lets the admin UI show which rules are loaded and lets tests assert
+    that the bundle is present. The actual evaluation happens inside
+    ActionExecutor; this endpoint is read-only.
+    """
+    from app.services.opa_client import opa_client
+
+    return {
+        "rules": [
+            {"name": name, "description": _POLICY_DESCRIPTIONS.get(name, "")}
+            for name in opa_client.rule_names()
+        ],
+        "count": len(opa_client.rule_names()),
+    }
+
+
+_POLICY_DESCRIPTIONS = {
+    "tenant_isolation": "Rejects actions whose tenant_id does not match the caller's tenant.",
+    "forbidden_parameters": "Disallows dangerous action names from running at all (e.g. system.drop_database).",
+    "max_parameters": "Rejects actions that pass more than 32 parameters to prevent runaway calls.",
+}
+
+
 def _execute_function_sandbox(code: str, parameters: dict, timeout_seconds: int, memory_mb: int) -> dict:
     try:
         ast.parse(code)
