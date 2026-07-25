@@ -8,6 +8,17 @@
 
 ## v2.4.1 增量 (2026-07-25)
 
+### AIP-004: Guardrails chat/RAG integration
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Chat 输入/输出安全校验 | ✅ | `routers/aip.py`：输入阻断、Markdown 输出检查、PII 脱敏、双向审计日志 |
+| Chat SSE 安全校验 | ✅ | 输出完整缓冲检查后最多拆分为 3 个脱敏 SSE chunk |
+| RAG 输入/输出安全校验 | ✅ | query 输入阻断、答案 Markdown/ontology/PII 检查及日志 |
+| 多租户与旁路开关 | ✅ | tenant 缺省 `UUID(int=0)`；`GUARDRAILS_ENABLED=false` 可旁路 |
+| Guardrails 日志持久化 | ✅ | `GuardrailsService.log_check()` 与 `AIPGuardrailsLog` 实际字段对齐 |
+| 单测 | ⚠️ | `tests/test_aip_004.py` 新增 6 项；当前环境缺少 pytest/SQLAlchemy，compileall 通过但 pytest 未执行 |
+
 ### AIP-009: Prompt Template Management
 
 > AIP-009 落地：Prompt Template 作为一等多租户资源，完整 CRUD + render。
@@ -205,7 +216,7 @@
 | AIP-001 | LLM Gateway (One API) | **DONE** | `llm_gateway.py` (205行) + one-api docker-compose 服务 + .env 配置 |
 | AIP-002 | RAG Pipeline | **PARTIAL** | `/aip/rag/query` 端点完成。**缺**: BGE-Reranker + 实体识别 + llama-index 未用 |
 | AIP-003 | Agent Orchestrator | **NOT STARTED** | `/agents/*` 端点返回占位符；无 langgraph 代码 |
-| AIP-004 | Guardrails 安全校验 | **NOT STARTED** | 无 guardrails 服务实现；AIPGuardrailsLog 模型存在但未连接 |
+| AIP-004 | Guardrails 安全校验 | **DONE** | GuardrailsService 已连接 chat/stream/RAG；输入阻断、输出 PII 脱敏、逐检查审计日志、环境变量旁路及 6 项单测 |
 | AIP-005 | AIP API 端点 | **PARTIAL** | chat/stream/rag/models 端点完成。**缺**: agent 端点占位符 |
 | AIP-006 | LLM 对话前端 | **DONE** | `Chat.tsx` (215行) SSE 流式 + 模型选择 + Markdown + 代码高亮 |
 | AIP-007 | RAG 查询前端 | **PARTIAL** | `RAGSearch.tsx` (100行) 页面存在但任务标记未开始 |

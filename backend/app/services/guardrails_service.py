@@ -5,6 +5,7 @@ Backends (best-effort, degrade gracefully if dependencies missing):
 - Output: presidio PII detection/redaction, ontology consistency checks, output format validation
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -12,7 +13,6 @@ from typing import Dict, Any, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import insert
 
 from app.models.ontology_models import AIPGuardrailsLog
 
@@ -70,7 +70,7 @@ class GuardrailsService:
     # Basic toxicity blocklist (Chinese + English)
     TOXICITY_KEYWORDS = [
         "傻逼", "蠢货", "去死", "垃圾", "废物", "滚", "fuck", "shit",
-        "bitch", "damn", "asshole", "cunt", "dick",
+        "bitch", "damn", "asshole", "cunt", "dick", "stupid", "idiot",
     ]
 
     # Banned topics (simple keyword match, can be extended to classifier)
@@ -158,7 +158,7 @@ class GuardrailsService:
             details["banned_topics"] = {"triggered": topic_triggered}
 
         score = min(score, 1.0)
-        blocked = score >= 0.5
+        blocked = bool(triggered)
 
         return {
             "passed": not blocked,
@@ -196,7 +196,7 @@ class GuardrailsService:
                 score += 0.3
 
         score = min(score, 0.9)
-        blocked = score >= 0.5
+        blocked = bool(triggered)
         return {
             "passed": not blocked,
             "score": round(score, 2),
@@ -338,29 +338,35 @@ class GuardrailsService:
     # Audit logging
     # -----------------------------------------------------------------------
 
-    async def log_check(
-        self,
-        model: str,
-        input_text: str,
-        output_text: str,
-        input_result: Dict[str, Any],
-        output_result: Dict[str, Any],
-    ) -> None:
-        """Persist guardrails check result to database (best-effort)."""
+    async def log_check(self, content: str, result: Dict[str, Any]) -> None:
+        """Persist one guardrails check result to the database (best-effort)."""
         if self.db is None:
             return
         try:
-            triggered = input_result.get("triggered", []) + output_result.get("triggered", [])
+            check_type = result.get("check_type", "input")
+            pii_details = result.get("details", {}).get("pii", {})
+            pii_entities = list(pii_details.get("pii_found", {}).keys())
+            redacted = result.get("redacted_text", content) != content
+            if redacted:
+                action_taken = "redacted"
+            elif not result.get("passed", True):
+                action_taken = "blocked"
+            else:
+                action_taken = "allowed"
+            snapshot = result.get("redacted_text", content) if check_type == "output" else content
             log = AIPGuardrailsLog(
                 id=uuid4(),
-                tenant_id=self.tenant_id,
-                model=model,
-                input_preview=input_text[:500],
-                output_preview=output_text[:500],
-                triggered=len(triggered) > 0,
-                rules_triggered=triggered,
+                tenant_id=self.tenant_id or UUID(int=0),
+                check_type=check_type,
+                content_snapshot=snapshot[:500],
+                content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                passed=result.get("passed", True),
+                violations=result.get("triggered", []),
+                action_taken=action_taken,
+                pii_entities=pii_entities,
             )
             self.db.add(log)
             await self.db.flush()
+            await self.db.commit()
         except Exception as e:
             logger.warning(f"Failed to log guardrails check: {e}")

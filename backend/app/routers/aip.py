@@ -1,8 +1,9 @@
 """AIP (AI Platform) API Router"""
 import json
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -47,6 +48,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["AIP"])
 
 
+class GuardrailsBlocked(HTTPException):
+    def __init__(self, triggered: list[str]):
+        super().__init__(status_code=400, detail="Input blocked by guardrails")
+        self.triggered = triggered
+
+
+def _guardrails_enabled() -> bool:
+    return os.getenv("GUARDRAILS_ENABLED", "true").lower() not in {"false", "0", "no", "off"}
+
+
+def _last_user_message(messages: list[dict]) -> str:
+    return next((message["content"] for message in reversed(messages) if message["role"] == "user"), "")
+
+
+async def _check_guardrails_input(guardrails: GuardrailsService, content: str) -> Dict:
+    result = guardrails.check_input(content)
+    await guardrails.log_check(content, result)
+    if not result["passed"]:
+        raise GuardrailsBlocked(result["triggered"])
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
@@ -58,25 +81,12 @@ async def chat(
     db: AsyncSession = Depends(get_db),
 ):
     """Non-streaming chat completion with guardrails."""
-    tenant_id = getattr(request.state, "tenant_id", None)
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
-    last_user_message = messages[-1]["content"] if messages else ""
-
-    # Guardrails input check
-    guardrails = GuardrailsService(db, tenant_id)
-    input_check = guardrails.check_input(last_user_message)
-    if not input_check["passed"]:
-        await guardrails.log_check(
-            model=data.model or settings.DEFAULT_LLM_MODEL,
-            input_text=last_user_message,
-            output_text="",
-            input_result=input_check,
-            output_result={"passed": True, "score": 0, "triggered": [], "check_type": "output"},
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Input blocked by guardrails: {input_check['triggered']}",
-        )
+    last_user_message = _last_user_message(messages)
+    guardrails = GuardrailsService(db, tenant_id) if _guardrails_enabled() else None
+    if guardrails:
+        await _check_guardrails_input(guardrails, last_user_message)
 
     try:
         # Apply prompt template if provided
@@ -99,16 +109,12 @@ async def chat(
         choice = result.get("choices", [{}])[0]
         message_data = choice.get("message", {})
         usage_data = result.get("usage", {})
-        # Guardrails output check
-        output_check = guardrails.check_output(message_data.get("content", ""))
-        safe_content = output_check.get("redacted_text", message_data.get("content", ""))
-        await guardrails.log_check(
-            model=result.get("model", data.model or settings.DEFAULT_LLM_MODEL),
-            input_text=last_user_message,
-            output_text=safe_content,
-            input_result=input_check,
-            output_result=output_check,
-        )
+        raw_content = message_data.get("content", "")
+        safe_content = raw_content
+        if guardrails:
+            output_check = guardrails.check_output(raw_content, expected_format="markdown")
+            safe_content = output_check.get("redacted_text", raw_content)
+            await guardrails.log_check(raw_content, output_check)
 
         # Update prompt template usage statistics
         if data.prompt_template_id:
@@ -136,9 +142,13 @@ async def chat(
         raise HTTPException(status_code=502, detail=f"LLM gateway error: {e}")
 
 
-async def _sse_generator(data: ChatRequest) -> AsyncGenerator[str, None]:
+async def _sse_generator(
+    data: ChatRequest,
+    guardrails: Optional[GuardrailsService] = None,
+) -> AsyncGenerator[str, None]:
     """SSE generator for streaming chat."""
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
+    buffered = ""
     try:
         async for chunk_json in llm_gateway.chat_stream(
             messages=messages,
@@ -148,12 +158,23 @@ async def _sse_generator(data: ChatRequest) -> AsyncGenerator[str, None]:
             chunk = json.loads(chunk_json)
             if "error" in chunk:
                 yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
-                break
+                return
             if chunk.get("done"):
-                yield f"data: [DONE]\n\n"
                 break
-            sse_data = json.dumps({"delta": chunk.get("delta", ""), "finish_reason": chunk.get("finish_reason")})
-            yield f"data: {sse_data}\n\n"
+            if guardrails:
+                buffered += chunk.get("delta", "")
+            else:
+                sse_data = json.dumps({"delta": chunk.get("delta", ""), "finish_reason": chunk.get("finish_reason")})
+                yield f"data: {sse_data}\n\n"
+        if guardrails:
+            output_check = guardrails.check_output(buffered, expected_format="markdown")
+            safe_content = output_check.get("redacted_text", buffered)
+            await guardrails.log_check(buffered, output_check)
+            chunk_size = max(1, (len(safe_content) + 2) // 3)
+            for offset in range(0, len(safe_content), chunk_size):
+                sse_data = json.dumps({"delta": safe_content[offset:offset + chunk_size], "finish_reason": None})
+                yield f"data: {sse_data}\n\n"
+        yield "data: [DONE]\n\n"
     except Exception as e:
         logger.error(f"SSE generator error: {e}")
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -163,10 +184,17 @@ async def _sse_generator(data: ChatRequest) -> AsyncGenerator[str, None]:
 async def chat_stream(
     request: Request,
     data: ChatRequest,
+    db: AsyncSession = Depends(get_db),
 ):
     """Streaming chat completion (SSE)."""
+    guardrails = None
+    if _guardrails_enabled():
+        tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+        guardrails = GuardrailsService(db, tenant_id)
+        messages = [{"role": m.role, "content": m.content} for m in data.messages]
+        await _check_guardrails_input(guardrails, _last_user_message(messages))
     return StreamingResponse(
-        _sse_generator(data),
+        _sse_generator(data, guardrails),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -187,23 +215,10 @@ async def rag_query(
     db: AsyncSession = Depends(get_db),
 ):
     """Ontology-aware RAG query."""
-    tenant_id = getattr(request.state, "tenant_id", None)
-    guardrails = GuardrailsService(db, tenant_id)
-
-    # Guardrails input check
-    input_check = guardrails.check_input(data.query)
-    if not input_check["passed"]:
-        await guardrails.log_check(
-            model=settings.DEFAULT_LLM_MODEL,
-            input_text=data.query,
-            output_text="",
-            input_result=input_check,
-            output_result={"passed": True, "score": 0, "triggered": [], "check_type": "output"},
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Input blocked by guardrails: {input_check['triggered']}",
-        )
+    tenant_id = getattr(request.state, "tenant_id", UUID(int=0))
+    guardrails = GuardrailsService(db, tenant_id) if _guardrails_enabled() else None
+    if guardrails:
+        await _check_guardrails_input(guardrails, data.query)
 
     # Step 1: Retrieve relevant objects via semantic search
     search_service = SemanticSearchService(db, tenant_id)
@@ -298,21 +313,15 @@ async def rag_query(
             answer = f"Failed to generate answer: {e}"
             model_used = ""
 
-    # Guardrails output check
-    if answer and not answer.startswith("Failed to generate answer"):
-        try:
-            output_check = guardrails.check_output(answer, ontology_context=context)
-            safe_answer = output_check.get("redacted_text", answer)
-            await guardrails.log_check(
-                model=model_used,
-                input_text=data.query,
-                output_text=safe_answer,
-                input_result={"passed": True, "score": 0, "triggered": [], "check_type": "input"},
-                output_result=output_check,
-            )
-            answer = safe_answer
-        except Exception as e:
-            logger.warning(f"RAG output guardrails failed: {e}")
+    if guardrails and model_used:
+        output_check = guardrails.check_output(
+            answer,
+            expected_format="markdown",
+            ontology_context=context,
+        )
+        safe_answer = output_check.get("redacted_text", answer)
+        await guardrails.log_check(answer, output_check)
+        answer = safe_answer
 
     # Update prompt template usage statistics
     if data.prompt_template_id and model_used and model_used != "llama-index":
@@ -693,11 +702,12 @@ async def list_guardrails_logs(
     return [
         GuardrailsLogResponse(
             id=log.id,
-            model=log.model,
-            input_preview=log.input_preview,
-            output_preview=log.output_preview,
-            triggered=log.triggered,
-            rules_triggered=log.rules_triggered or [],
+            check_type=log.check_type,
+            content_snapshot=log.content_snapshot,
+            passed=log.passed,
+            violations=log.violations or [],
+            action_taken=log.action_taken,
+            pii_entities=log.pii_entities or [],
             created_at=log.created_at,
         )
         for log in items

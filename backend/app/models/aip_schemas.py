@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     model: Optional[str] = None
     temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(default=None, ge=1)
     stream: bool = False
     prompt_template_id: Optional[UUID] = None
     prompt_variables: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -188,11 +189,13 @@ class PromptRenderResponse(BaseModel):
 
 class GuardrailsLogResponse(BaseModel):
     id: UUID
-    model: str
-    input_preview: str
-    output_preview: str
-    triggered: bool
-    rules_triggered: List[str]
+    check_type: str
+    content_snapshot: Optional[str]
+    passed: bool
+    violations: List[str]
+    action_taken: Optional[str]
+    pii_entities: List[str]
+    created_at: datetime
 
 
 class LLMCallLogResponse(BaseModel):

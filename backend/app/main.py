@@ -195,6 +195,13 @@ except Exception as e:
 try:
     from app.routers import aip
     app.include_router(aip.router, prefix=f"{settings.API_PREFIX}/aip", tags=["AIP"])
+    app.add_exception_handler(
+        aip.GuardrailsBlocked,
+        lambda req, exc: JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "triggered": exc.triggered},
+        ),
+    )
     logger.info("AIP router registered")
 except Exception as e:
     logger.warning(f"AIP router not available: {e}")
