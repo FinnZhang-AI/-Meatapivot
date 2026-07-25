@@ -20,6 +20,7 @@ from app.models.aip_schemas import (
 from app.models.ontology_models import AIPPromptTemplate
 from app.routers.auth import get_current_user, UserResponse
 from app.services.database import get_db
+from app.services.prompt_template_service import PromptTemplateService
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +159,26 @@ async def render_prompt(
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Render a prompt template with provided variables."""
+    """Render a prompt template with provided variables.
+
+    Returns 400 with the list of missing variables (extracted from the
+    template's declared ``variables`` metadata) when the request omits any
+    of them — this is what callers actually want, instead of getting the
+    raw Jinja ``{{ var }}`` back in the response.
+    """
     tenant_id = await _get_tenant_id(current_user)
     template = await _get_template(db, tenant_id, template_id)
 
+    prompt_service = PromptTemplateService(db, tenant_id)
+    missing = prompt_service.get_missing_variables(template, data.variables)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Missing variables", "missing": missing},
+        )
+
     try:
         rendered = _render_template(template.template_text, data.variables)
-    except KeyError as e:
-        raise HTTPException(status_code=400, detail=f"Missing variable: {e}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Template render error: {e}")
 

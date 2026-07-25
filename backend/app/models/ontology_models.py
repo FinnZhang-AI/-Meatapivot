@@ -423,6 +423,15 @@ class AIPPromptTemplate(Base):
     __table_args__ = (
         Index("idx_aip_prompt_templates_tenant", "tenant_id"),
         Index("idx_aip_prompt_templates_name", "tenant_id", "name"),
+        # Partial unique: only one *active* template per (tenant, name). Archived
+        # copies (is_active=False) are kept for history and may share a name.
+        Index(
+            "uq_aip_prompt_templates_tenant_name_active",
+            "tenant_id",
+            "name",
+            unique=True,
+            postgresql_where=(is_active.is_(True)),
+        ),
         {"schema": None},
     )
 

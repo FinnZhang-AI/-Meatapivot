@@ -1,8 +1,40 @@
 # Meatapivot 开发进度报告
 
-> **生成日期**: 2026-06-18
+> **生成日期**: 2026-07-25
 > **验证方式**: 逐文件 git log + 代码检查 + 单元测试
 > **整体进度**: v2.4.0 Release — Workshop runtime + 测试基础收口
+
+---
+
+## v2.4.1 增量 (2026-07-25)
+
+### AIP-009: Prompt Template Management
+
+> AIP-009 落地：Prompt Template 作为一等多租户资源，完整 CRUD + render。
+> 后端文件已存在，本轮做收口 + 修复 + 测试补全。
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| `AIPPromptTemplate` 模型 | ✅ | `ontology_models.py:404` (id, tenant_id, name, description, template_text, variables JSONB, version, is_active, is_ab_test, ab_test_group, usage_count, avg_prompt_tokens, created_by, timestamps) |
+| Pydantic schemas | ✅ | `aip_schemas.py:137-188` (Create/Update/Response/List/Render) |
+| FastAPI 路由 `/api/v1/aip/prompts` | ✅ | `routers/prompts.py` (POST/GET/PUT/POST render/DELETE) + main.py 注册 |
+| Service 层 | ✅ | `services/prompt_template_service.py` (load_template, render, record_usage, get_missing_variables) |
+| Migration 000000000002 | ✅ | 重写为 idempotent（`CREATE TABLE / INDEX IF NOT EXISTS`），并显式创建 `uq_aip_prompt_templates_tenant_name_active` partial unique index |
+| Partial unique index `(tenant_id, name) WHERE is_active = true` | ✅ | `ontology_models.py` + migration |
+| 单测 | ✅ | `tests/test_aip_009.py` 17 测试全过（create / duplicate 409 / list pagination / include_inactive / get / update version bump / render success / render missing vars 400 / delete soft-archive / schema / service / partial index / migration idempotency） |
+
+### 修复点
+
+- Migration 000000000002 原版会在迁移 000000000001 已创建的数据库上失败（`create_all` 已建表 + 索引），重写为 `IF NOT EXISTS` 幂等版
+- `POST /{id}/render` 之前静默返回带 `{{ var }}` 占位符的字符串；现在用 `PromptTemplateService.get_missing_variables()` 返回 400 + `{"missing": [...]}`，更可调试
+- AIPPromptTemplate 缺 partial unique index，已补
+
+### 验证
+
+| 项 | 结果 |
+|----|------|
+| `pytest tests/test_aip_009.py` | ✅ 17/17 |
+| `pytest tests/test_aip_sprint2.py tests/test_aip_agent.py tests/test_sprint4.py` | ✅ 36 passed, 3 failed (pre-existing, unrelated), 7 skipped |
 
 ---
 
@@ -166,7 +198,7 @@
 | ONT-011 | 语义搜索前端界面 | **NOT STARTED** | 无独立搜索 UI 页面 |
 | ONT-012 | Action 执行前端界面 | **DONE** | `ActionDialog.tsx` (140行) 动态表单生成 + 执行反馈；ObjectView 已接入 |
 
-### AIP：AIP 智能层 Backend (2 DONE / 3 PARTIAL / 5 NOT STARTED)
+### AIP：AIP 智能层 Backend (3 DONE / 3 PARTIAL / 4 NOT STARTED)
 
 | 编号 | 任务 | 状态 | 证据 / 缺口 |
 |------|------|------|------------|
@@ -178,7 +210,8 @@
 | AIP-006 | LLM 对话前端 | **DONE** | `Chat.tsx` (215行) SSE 流式 + 模型选择 + Markdown + 代码高亮 |
 | AIP-007 | RAG 查询前端 | **PARTIAL** | `RAGSearch.tsx` (100行) 页面存在但任务标记未开始 |
 | AIP-008 | Agent 工作流可视化 | **NOT STARTED** | 无 Agent 相关前端组件 |
-| AIP-009 | Prompt 管理后台 | **NOT STARTED** | 无 Prompt 模板 CRUD |
+| AIP-009 | Prompt 管理后台 | **DONE** | `routers/prompts.py` + `services/prompt_template_service.py` + `tests/test_aip_009.py` (17 tests) + migration 002 idempotent + partial unique index |
+| AIP-009 | Prompt 管理后台 | **DONE (v2.4.1)** | `routers/prompts.py` + `services/prompt_template_service.py` + `tests/test_aip_009.py` (17 tests) + migration 002 idempotent |
 | AIP-010 | LLM 成本仪表盘 | **NOT STARTED** | Dashboard 使用 Mock 数据，无成本图表 |
 
 ### APP-F：Apps 应用层 Frontend (6 DONE / 2 NOT STARTED)
