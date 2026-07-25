@@ -18,6 +18,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useAuth } from '../../hooks/useAuth'
+import { useRunWorkshop, type WorkshopExecution } from '../../hooks/useRunWorkshop'
 import { API_BASE_URL, getAuthHeaders, handleResponse } from '../../hooks/useOntology'
 
 interface WorkshopAppData {
@@ -35,16 +36,30 @@ interface BaseNodeProps {
   selected?: boolean
 }
 
-const NodeShell = ({ kind, label, color, children, selected }: {
+const executionBorderClass = (status?: string) => {
+  if (['done', 'completed', 'success', 'passed'].includes(status || '')) {
+    return 'border-emerald-500'
+  }
+  if (['error', 'failed'].includes(status || '')) return 'border-rose-500'
+  return 'border-slate-300 dark:border-slate-600'
+}
+
+const NodeShell = ({ kind, label, color, children, selected, status }: {
   kind: string
   label: string
   color: string
   children?: React.ReactNode
   selected?: boolean
+  status?: string
 }) => (
   <div
+    data-execution-status={status}
     className={`px-3 py-2 rounded-lg border-2 bg-white dark:bg-slate-800 shadow-sm min-w-[160px] ${
-      selected ? 'border-primary' : 'border-slate-200 dark:border-slate-700'
+      status
+        ? executionBorderClass(status)
+        : selected
+          ? 'border-primary'
+          : 'border-slate-200 dark:border-slate-700'
     }`}
   >
     <Handle type="target" position={Position.Left} className="!bg-slate-400" />
@@ -59,7 +74,13 @@ const NodeShell = ({ kind, label, color, children, selected }: {
 )
 
 const TableNode = ({ data, selected }: BaseNodeProps) => (
-  <NodeShell kind="Table" label={data.label as string} color="bg-blue-500" selected={selected}>
+  <NodeShell
+    kind="Table"
+    label={data.label as string}
+    color="bg-blue-500"
+    selected={selected}
+    status={data.executionStatus as string | undefined}
+  >
     <p className="text-xs text-slate-500 mt-1">查询对象类型实例</p>
   </NodeShell>
 )
@@ -67,7 +88,13 @@ const TableNode = ({ data, selected }: BaseNodeProps) => (
 const ChartNode = ({ data, selected }: BaseNodeProps) => {
   const upstream = (data.upstream as string) || ''
   return (
-    <NodeShell kind="Chart" label={data.label as string} color="bg-emerald-500" selected={selected}>
+    <NodeShell
+      kind="Chart"
+      label={data.label as string}
+      color="bg-emerald-500"
+      selected={selected}
+      status={data.executionStatus as string | undefined}
+    >
       <p className="text-xs text-slate-500 mt-1">
         {upstream ? `↑ 消费: ${upstream}` : '未连接数据源'}
       </p>
@@ -76,7 +103,13 @@ const ChartNode = ({ data, selected }: BaseNodeProps) => {
 }
 
 const ActionNode = ({ data, selected }: BaseNodeProps) => (
-  <NodeShell kind="Action" label={data.label as string} color="bg-amber-500" selected={selected}>
+  <NodeShell
+    kind="Action"
+    label={data.label as string}
+    color="bg-amber-500"
+    selected={selected}
+    status={data.executionStatus as string | undefined}
+  >
     <p className="text-xs text-slate-500 mt-1">触发 Action</p>
   </NodeShell>
 )
@@ -89,7 +122,13 @@ const FilterNode = ({ data, selected }: BaseNodeProps) => {
   const value = (data.value as string) || ''
   const summary = field ? `${field} ${operator} ${value}` : '未配置过滤条件'
   return (
-    <NodeShell kind="Filter" label={data.label as string} color="bg-violet-500" selected={selected}>
+    <NodeShell
+      kind="Filter"
+      label={data.label as string}
+      color="bg-violet-500"
+      selected={selected}
+      status={data.executionStatus as string | undefined}
+    >
       <p className="text-xs text-slate-500 mt-1 truncate" title={summary}>
         {summary}
       </p>
@@ -108,7 +147,13 @@ const LinkNavNode = ({ data, selected }: BaseNodeProps) => {
     ? `${linkType} → ${targetType || '?'}`
     : '未配置 LinkType'
   return (
-    <NodeShell kind="LinkNav" label={data.label as string} color="bg-cyan-500" selected={selected}>
+    <NodeShell
+      kind="LinkNav"
+      label={data.label as string}
+      color="bg-cyan-500"
+      selected={selected}
+      status={data.executionStatus as string | undefined}
+    >
       <p className="text-xs text-slate-500 mt-1 truncate" title={summary}>
         {summary}
       </p>
@@ -123,6 +168,58 @@ const nodeTypes = {
   filter: FilterNode,
   linknav: LinkNavNode,
 }
+
+const statusPresentation = (status?: string) => {
+  if (['done', 'completed', 'success', 'passed'].includes(status || '')) {
+    return { text: '✓ passed', className: 'text-emerald-600' }
+  }
+  if (['error', 'failed'].includes(status || '')) {
+    return { text: '✗ failed', className: 'text-rose-600' }
+  }
+  if (status === 'skipped') {
+    return { text: '⊘ skipped', className: 'text-slate-400' }
+  }
+  return { text: '⋯ pending', className: 'text-slate-500' }
+}
+
+const ExecutionPanel = ({ execution, nodes, isLoading }: {
+  execution?: WorkshopExecution
+  nodes: Node[]
+  isLoading: boolean
+}) => (
+  <section aria-label="Execution status" className="border-b border-slate-200 dark:border-slate-700 pb-3 mb-3">
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-xs uppercase tracking-wider text-slate-400">执行状态</p>
+      {(execution || isLoading) && (
+        <span className="text-xs text-slate-500">
+          {isLoading ? 'running' : execution?.status}
+        </span>
+      )}
+    </div>
+    {!execution && !isLoading ? (
+      <p className="text-xs text-slate-400">尚无执行记录</p>
+    ) : (
+      <div className="space-y-1.5" role="status">
+        {nodes.map((node) => {
+          const result = execution?.results[node.id]
+          const status = isLoading ? 'pending' : result?.status || 'skipped'
+          const presentation = statusPresentation(status)
+          return (
+            <div key={node.id} className="flex items-start justify-between gap-2 text-xs">
+              <span className="text-slate-600 dark:text-slate-300 truncate">
+                {(node.data.label as string) || node.id}
+              </span>
+              <span className={`shrink-0 ${presentation.className}`}>{presentation.text}</span>
+            </div>
+          )
+        })}
+        {execution?.duration_ms != null && (
+          <p className="text-[10px] text-slate-400 pt-1">{execution.duration_ms} ms</p>
+        )}
+      </div>
+    )}
+  </section>
+)
 
 // ---------------------------------------------------------------------------
 // Editor
@@ -149,6 +246,8 @@ const WorkshopEditor = () => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+
+  const { run, isLoading: running, error: runError, currentExecution } = useRunWorkshop(appId)
 
   // Load app on mount
   useEffect(() => {
@@ -273,6 +372,34 @@ const WorkshopEditor = () => {
     }
   }
 
+  const handleRun = async () => {
+    try {
+      await run()
+    } catch {
+      // error surfaced via `runError`; nothing else to do
+    }
+  }
+
+  // Merge the latest per-node execution results into node data so the
+  // custom node renderers can show a status border.
+  useEffect(() => {
+    if (!currentExecution) return
+    setNodes((nds) =>
+      nds.map((n) => {
+        const r = currentExecution.results[n.id]
+        const status = r?.status
+        if (status && n.data.executionStatus !== status) {
+          return { ...n, data: { ...n.data, executionStatus: status } }
+        }
+        return n
+      })
+    )
+  }, [currentExecution])
+
+  // Expose a friendly preview of the selected node's result in the
+  // property panel (only when an execution exists for it).
+  const selectedResult = currentExecution?.results[selectedNode?.id ?? ''] || null
+
   const nodeCount = useMemo(() => nodes.length, [nodes])
   const edgeCount = useMemo(() => edges.length, [edges])
 
@@ -303,7 +430,19 @@ const WorkshopEditor = () => {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {error && <span className="text-xs text-rose-500">{error}</span>}
+          {(error || runError) && (
+            <span className="text-xs text-rose-500">
+              {error || (runError instanceof Error ? runError.message : String(runError))}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleRun}
+            disabled={running}
+            className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            {running ? '执行中…' : '▶ Run'}
+          </button>
           <button
             type="button"
             onClick={save}
@@ -356,6 +495,7 @@ const WorkshopEditor = () => {
 
         {/* Property Panel */}
         <aside className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 overflow-y-auto">
+          <ExecutionPanel execution={currentExecution} nodes={nodes} isLoading={running} />
           <p className="text-xs uppercase tracking-wider text-slate-400 px-1 mb-2">属性</p>
           {selectedNode ? (
             <div className="space-y-3">
@@ -378,6 +518,24 @@ const WorkshopEditor = () => {
                   ({Math.round(selectedNode.position.x)}, {Math.round(selectedNode.position.y)})
                 </p>
               </div>
+
+              {selectedResult && (
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-1">
+                  <p className="text-xs uppercase tracking-wider text-slate-400">节点结果</p>
+                  <p className={`text-xs ${statusPresentation(selectedResult.status).className}`}>
+                    {statusPresentation(selectedResult.status).text}
+                    {selectedResult.duration_ms != null ? ` · ${selectedResult.duration_ms} ms` : ''}
+                  </p>
+                  {selectedResult.error && (
+                    <p className="text-xs text-rose-500 break-words">{selectedResult.error}</p>
+                  )}
+                  {selectedResult.output != null && (
+                    <pre className="text-[10px] bg-slate-50 dark:bg-slate-900/40 rounded p-2 overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                      {JSON.stringify(selectedResult.output, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
 
               {selectedNode.type === 'filter' && (
                 <div className="border-t border-slate-200 dark:border-slate-700 pt-3 space-y-2">

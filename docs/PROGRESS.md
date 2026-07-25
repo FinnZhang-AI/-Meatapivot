@@ -4,7 +4,21 @@
 > **验证方式**: 逐文件 git log + 代码检查 + 单元测试
 > **整体进度**: v2.4.0 Release — Workshop runtime + 测试基础收口
 
+### V4-1 frontend integration (2026-07-25)
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| `useRunWorkshop` 钩子（同步 mutation + 历史查询 + current execution） | ✅ | `frontend/src/hooks/useRunWorkshop.ts` |
+| WorkshopEditor Run 按钮 + ExecutionPanel（per-node ✓/✗/⋯/⊘） | ✅ | `frontend/src/pages/workshop/WorkshopEditor.tsx` |
+| 节点边框按执行状态染色（success=绿、error=红、pending=灰） | ✅ | `executionBorderClass` + `data-execution-status` 标记 |
+| 选中节点显示 per-node result（output / error / duration） | ✅ | property panel 中 `selectedResult` 区 |
+| Vitest 覆盖 5 项 run/exec 行为 | ✅ | `frontend/src/pages/workshop/WorkshopEditor.test.tsx` (5/5 pass) |
+| TypeScript `npx tsc --noEmit` | ✅ | Clean |
+| 同步执行适配 | ✅ | 后端无 task ID；前端 `useMutation.mutateAsync` 拿到完整 `WorkshopExecution`，无轮询/SSE |
+
 ---
+
+## v2.4.1 增量 (2026-07-25)
 
 ## v2.4.1 增量 (2026-07-25)
 
