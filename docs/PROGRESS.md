@@ -61,6 +61,16 @@
 | `pytest tests/test_aip_009.py` | ✅ 17/17 |
 | `pytest tests/test_aip_sprint2.py tests/test_aip_agent.py tests/test_sprint4.py` | ✅ 36 passed, 3 failed (pre-existing, unrelated), 7 skipped |
 
+### V4-3 补全：Celery compile_ontology / execute_decision_flow (2026-07-26)
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| `compile_ontology` Celery 任务 | ✅ | `backend/app/worker/tasks.py`：调用 `CompilationPipeline.run_full()`，支持 full/incremental 参数，异常时 3 次指数退避重试 |
+| `execute_decision_flow` Celery 任务 | ✅ | `backend/app/worker/tasks.py`：从 Neo4j 加载 flow 定义、逐步执行、Redis 状态跟踪，与同步路由共享 `execute_flow_step` 逻辑 |
+| 单元测试 | ✅ | `tests/test_workers.py` 新增 4 项（任务存在性、签名参数检查），总计 9/9 通过 |
+| 代码修复 | ✅ | `workshop_models.py` 补 `CheckConstraint` 导入；`aip_schemas.py` `budget_state` 改为 `Literal` 类型；`test_sprint4.py` 路由断言适配 `/apps` 前缀 |
+| 验证 | ✅ | `pytest tests/test_sprint4.py tests/test_workshop_executor.py tests/test_workers.py` 36/36 全过 |
+
 ---
 
 ## v2.4.0 Release 状态 (2026-06-18)

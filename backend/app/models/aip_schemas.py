@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -253,7 +253,7 @@ class LLMCostReport(BaseModel):
     by_model: List[LLMCostByModel]
     trend: List[LLMCostTrendPoint]
     budget: Optional["LLMBudgetResponse"] = None
-    budget_state: str = "unknown"  # "ok" | "warning" | "exceeded" | "no_budget"
+    budget_state: Literal["ok", "warning", "exceeded", "no_budget", "unknown"] = "unknown"
 
 
 class LLMBudgetCreate(BaseModel):

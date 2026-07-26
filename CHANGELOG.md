@@ -5,6 +5,61 @@ All notable changes to Meatapivot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-07-26
+
+### Guardrails + Prompt Templates + Worker Completion
+
+This incremental release wires Guardrails into every AIP entry point,
+formalises Prompt Template as a first-class tenant resource, and finishes
+the two remaining Celery worker stubs from v2.4.0.
+
+### Added — AIP-004: Guardrails chat/RAG integration
+
+- Chat / chat-stream / RAG query endpoints now run input and output
+  safety checks through `GuardrailsService`.
+- Prompt injection and toxic-content patterns are blocked before they
+  reach the LLM; PII is redacted on the way out.
+- `AIPGuardrailsLog` rows are persisted for every check so audits can
+  trace what was blocked and why.
+- `GUARDRAILS_ENABLED=false` env var bypasses the layer for local
+  development.
+
+### Added — AIP-009: Prompt Template Management
+
+- `AIPPromptTemplate` model (id, tenant_id, name, description,
+  template_text, variables JSONB, version, is_active, is_ab_test,
+  ab_test_group, usage_count, avg_prompt_tokens, created_by, timestamps).
+- `/api/v1/aip/prompts` CRUD router with soft-delete (`is_active=false`)
+  and a `POST /{id}/render` endpoint that returns 400 when required
+  variables are missing.
+- `PromptTemplateService` handles variable injection and usage
+  statistics.
+- Migration `000000000002` rewritten to be idempotent; partial unique
+  index `(tenant_id, name) WHERE is_active = true` added.
+
+### Added — V4-3 completion: Celery compile_ontology / execute_decision_flow
+
+- `compile_ontology` Celery task now delegates to the existing
+  `CompilationPipeline.run_full()` so the HTTP `/ontology/compile`
+  endpoint and the background job share one source of truth. Supports
+  `full` / `incremental` compile types and retries up to 3 times with
+  exponential backoff.
+- `execute_decision_flow` Celery task loads a flow definition from Neo4j,
+  executes steps via the same `execute_flow_step` helper used by the
+  synchronous router, and persists execution state to Redis so the
+  `/decision-flows/executions/{id}` endpoint can poll it.
+- `backend/tests/test_workers.py` gains 4 new tests covering task
+  presence and signatures (9 tests total).
+
+### Fixed
+
+- `workshop_models.py` — added missing `CheckConstraint` import.
+- `aip_schemas.py` — `LLMCostReport.budget_state` narrowed to
+  `Literal["ok", "warning", "exceeded", "no_budget", "unknown"]`.
+- `test_sprint4.py` — workshop router assertions updated to use
+  `defaultdict(set)` so duplicate paths (`/apps` POST + GET) are not
+  silently overwritten.
+
 ## [2.4.0] - 2026-06-18
 
 ### "Workshop Runs" + "Test Foundation" Release

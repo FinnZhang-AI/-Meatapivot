@@ -364,25 +364,162 @@ def execute_function_action(self, function_id: str, action_id: str, context: Dic
 
 
 # ---------------------------------------------------------------------------
-# Deferred to v2.4.1: compile_ontology, execute_decision_flow
+# V4.1: compile_ontology, execute_decision_flow
 # ---------------------------------------------------------------------------
 
 
 @celery_app.task(bind=True, max_retries=3)
 def compile_ontology(self, tenant_id: str, compile_type: str = "incremental") -> Dict[str, Any]:
-    """V4-3: deferred — v2.2.0 Sprint 3 already moved compilation onto
-    the synchronous pipeline (``/ontology/compile``), so this Celery
-    variant isn't on the critical path. v2.4.1 will either remove it
-    or wire it up to the existing ``CompilationPipeline``."""
-    raise NotImplementedError("compile_ontology is deferred to v2.4.1")
+    """V4.1: Run ontology compilation through the Celery worker.
+
+    Delegates to the existing synchronous ``CompilationPipeline`` so the
+    HTTP ``/ontology/compile`` endpoint and this background job share one
+    source of truth. The Celery path is useful for long-running full
+    compiles that should not hold the HTTP request open.
+    """
+    try:
+        logger.info(f"Compiling ontology for tenant {tenant_id} ({compile_type})")
+
+        from app.services.database import async_session_maker
+        from app.services.compiler.compiler import CompilationPipeline
+
+        tenant_uuid = UUID(tenant_id)
+
+        async def _run() -> Dict[str, Any]:
+            async with async_session_maker() as db:
+                pipeline = CompilationPipeline(db, tenant_uuid)
+                if compile_type == "full":
+                    result = await pipeline.run_full()
+                else:
+                    # Incremental compile without an explicit object_type_id
+                    # falls back to a full compile; the incremental path
+                    # expects a specific type to be provided by the caller.
+                    result = await pipeline.run_full()
+                return {
+                    "tenant_id": tenant_id,
+                    "compile_type": compile_type,
+                    "status": result.status,
+                    "errors": [e.model_dump() for e in result.errors],
+                    "warnings": result.warnings,
+                    "neo4j_constraints_created": result.neo4j_constraints_created,
+                    "duration_ms": result.duration_ms,
+                }
+
+        return asyncio.run(_run())
+    except Exception as exc:
+        logger.exception(f"Ontology compilation failed for tenant {tenant_id}")
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
 @celery_app.task(bind=True, max_retries=3)
 def execute_decision_flow(self, flow_id: str, execution_id: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-    """V4-3: deferred — decision flows currently run synchronously via
-    the decision_flow router. v2.4.1 will move them to Celery when we
-    need long-running execution isolation."""
-    raise NotImplementedError("execute_decision_flow is deferred to v2.4.1")
+    """V4.1: Execute a decision flow through the Celery worker.
+
+    Mirrors the synchronous logic in ``app.routers.decision_flow`` but runs
+    inside the worker process so long-running flows do not block the HTTP
+    request loop. Execution status is written to Redis so the
+    ``/decision-flows/executions/{execution_id}`` endpoint can poll it.
+    """
+    try:
+        logger.info(f"Executing decision flow {flow_id} (execution: {execution_id})")
+
+        from app.services.neo4j_client import neo4j_client
+        from app.services.redis_client import redis_client
+
+        async def _run() -> Dict[str, Any]:
+            await redis_client.set_flow_execution(
+                parameters.get("tenant_id", "00000000-0000-0000-0000-000000000000"),
+                execution_id,
+                {
+                    "flow_id": flow_id,
+                    "status": "running",
+                    "started_at": datetime.utcnow().isoformat(),
+                    "steps_completed": [],
+                    "steps_failed": [],
+                    "context": parameters,
+                },
+            )
+
+            try:
+                query = """
+                MATCH (f:DecisionFlow {id: $flow_id, tenant_id: $tenant_id})
+                RETURN f
+                """
+                tenant_id = parameters.get("tenant_id", "00000000-0000-0000-0000-000000000000")
+                result = await neo4j_client.execute_query(query, {"flow_id": flow_id, "tenant_id": tenant_id})
+
+                if not result or len(result) == 0:
+                    await redis_client.update_flow_execution(tenant_id, execution_id, {
+                        "status": "failed",
+                        "error": "Decision flow not found",
+                        "failed_at": datetime.utcnow().isoformat(),
+                    })
+                    return {
+                        "flow_id": flow_id,
+                        "execution_id": execution_id,
+                        "status": "failed",
+                        "error": "Decision flow not found",
+                    }
+
+                flow_data = result[0]["f"]
+                steps = flow_data.get("steps", [])
+                context = {**parameters, "flow_id": flow_id, "execution_id": execution_id}
+
+                from app.routers.decision_flow import execute_flow_step
+                from app.models.schemas import DecisionFlowStep
+
+                for step_data in steps:
+                    step = DecisionFlowStep(**step_data)
+                    try:
+                        step_result = await execute_flow_step(step, context, tenant_id)
+                        execution_data = await redis_client.get_flow_execution(tenant_id, execution_id) or {}
+                        steps_completed = execution_data.get("steps_completed", [])
+                        steps_completed.append({
+                            "step_id": step.id,
+                            "step_name": step.name,
+                            "completed_at": datetime.utcnow().isoformat(),
+                            "result": str(step_result)[:500],
+                        })
+                        await redis_client.update_flow_execution(tenant_id, execution_id, {"steps_completed": steps_completed})
+                    except Exception as step_exc:
+                        execution_data = await redis_client.get_flow_execution(tenant_id, execution_id) or {}
+                        steps_failed = execution_data.get("steps_failed", [])
+                        steps_failed.append({
+                            "step_id": step.id,
+                            "step_name": step.name,
+                            "error": str(step_exc),
+                            "failed_at": datetime.utcnow().isoformat(),
+                        })
+                        await redis_client.update_flow_execution(tenant_id, execution_id, {"steps_failed": steps_failed})
+                        if not step.continue_on_error:
+                            raise
+
+                await redis_client.update_flow_execution(tenant_id, execution_id, {
+                    "status": "completed",
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "final_context": context,
+                })
+
+                return {
+                    "flow_id": flow_id,
+                    "execution_id": execution_id,
+                    "status": "completed",
+                    "steps_completed": len(steps),
+                }
+
+            except Exception as flow_exc:
+                tenant_id = parameters.get("tenant_id", "00000000-0000-0000-0000-000000000000")
+                await redis_client.update_flow_execution(tenant_id, execution_id, {
+                    "status": "failed",
+                    "error": str(flow_exc),
+                    "failed_at": datetime.utcnow().isoformat(),
+                })
+                raise
+
+        return asyncio.run(_run())
+    except Exception as exc:
+        logger.exception(f"Decision flow execution failed: {flow_id}")
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
 __all__ = [

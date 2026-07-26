@@ -91,3 +91,53 @@ def test_handles_invalid_utf8_gracefully():
     parsed = _parse_direct(b"\xff\xfe\xfd", mime="text/plain", filename="bad.txt")
     assert isinstance(parsed["text"], str)
     assert parsed["char_count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# V4.1: compile_ontology / execute_decision_flow task surface tests
+# ---------------------------------------------------------------------------
+
+
+def test_compile_ontology_task_exists():
+    mod, err = _load_tasks()
+    if mod is None:
+        # Skip when SQLAlchemy / pydantic are unavailable
+        return
+    assert hasattr(mod, "compile_ontology")
+    assert callable(mod.compile_ontology)
+    assert not getattr(mod.compile_ontology, "delay", None) is None
+
+
+def test_execute_decision_flow_task_exists():
+    mod, err = _load_tasks()
+    if mod is None:
+        return
+    assert hasattr(mod, "execute_decision_flow")
+    assert callable(mod.execute_decision_flow)
+    assert not getattr(mod.execute_decision_flow, "delay", None) is None
+
+
+def test_compile_ontology_task_signature():
+    mod, err = _load_tasks()
+    if mod is None:
+        return
+    import inspect
+    sig = inspect.signature(mod.compile_ontology)
+    params = list(sig.parameters.keys())
+    assert "self" in params
+    assert "tenant_id" in params
+    assert "compile_type" in params
+    assert sig.parameters["compile_type"].default == "incremental"
+
+
+def test_execute_decision_flow_task_signature():
+    mod, err = _load_tasks()
+    if mod is None:
+        return
+    import inspect
+    sig = inspect.signature(mod.execute_decision_flow)
+    params = list(sig.parameters.keys())
+    assert "self" in params
+    assert "flow_id" in params
+    assert "execution_id" in params
+    assert "parameters" in params

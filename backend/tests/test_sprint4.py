@@ -52,15 +52,17 @@ def _load_module(name: str, relpath: str):
 def test_workshop_router_endpoints_present():
     """Workshop router exposes the CRUD verbs the editor relies on."""
     router = _load_module("ws_test", "app/routers/workshop.py")
-    methods = {route.path: route.methods for route in router.router.routes}
-    # The app shell prefixes ``/workshop/apps`` so we look for the relative
-    # paths declared on the router.
-    assert "" in methods or "/" in methods, "missing collection create/list"
-    assert "/{app_id}" in methods, "missing item get/put/delete"
-    # POST on "" and GET on "" should both exist
-    create_route = methods.get("") or methods.get("/")
-    assert "POST" in (create_route or set()), "POST on collection must exist"
-    item_route = methods["/{app_id}"]
+    from collections import defaultdict
+    methods_by_path = defaultdict(set)
+    for route in router.router.routes:
+        methods_by_path[route.path].update(route.methods)
+    # The app shell prefixes ``/workshop`` so the router itself declares
+    # ``/apps`` as the collection path.
+    assert "/apps" in methods_by_path, "missing collection create/list"
+    assert "/apps/{app_id}" in methods_by_path, "missing item get/put/delete"
+    # POST on "/apps" and GET on "/apps" should both exist
+    assert "POST" in methods_by_path["/apps"], "POST on collection must exist"
+    item_route = methods_by_path["/apps/{app_id}"]
     assert {"GET", "PUT", "DELETE"}.issubset(item_route), "item needs GET/PUT/DELETE"
 
 

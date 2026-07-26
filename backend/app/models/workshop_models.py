@@ -10,6 +10,7 @@ its results without re-executing.
 """
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
